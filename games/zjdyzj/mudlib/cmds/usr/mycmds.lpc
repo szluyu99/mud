@@ -1,0 +1,32 @@
+// mycmds.lpc — 网页客户端底部菜单（移植自 zjmudhell，按本游戏已有的命令改过）
+#include <ansi.h>
+#include <zjmud.h>
+inherit F_CLEAN_UP;
+
+#define BT ESA + "006"
+
+int main(object me, string arg) {
+  if (!arg)
+    write(BT "b12:" HIG "常用" ZJBR "指令" NOR ":mycmds ofen" ZJSEP "b13:" HIY "技能" ZJBR "相关" NOR ":mycmds skill" ZJSEP "b14:" HIR "战斗" ZJBR "相关" NOR ":mycmds fight" ZJSEP
+      "b15:" HIM "任务" ZJBR "相关" NOR ":mycmds quest" ZJSEP "b16:" HIW "游戏" ZJBR "指南" NOR ":mycmds help" ZJSEP "b17:" HIC "频道" ZJBR "交流" NOR ":liaotian" + "\n");
+  else if (arg == "ofen")
+    write(BT "b1:查看" ZJBR "背包:inventory" ZJSEP "b2:综合" ZJBR "属性:score" ZJSEP "b3:健康" ZJBR "状态:hp"
+      ZJSEP "b4:查看" ZJBR "装备:arm" ZJSEP "b5:查看" ZJBR "技能:skills" ZJSEP "b6:游戏" ZJBR "时间:time"
+      ZJSEP "b7:睡觉" ZJBR "休息:sleep" ZJSEP "b8:在线" ZJBR "玩家:who" ZJSEP "b9:保存" ZJBR "档案:save" + "\n");
+  else if (arg == "skill")
+    write(BT "b1:查看" ZJBR "技能:skills" ZJSEP "b2:内力" ZJBR "回血:exert recover" ZJSEP "b3:内力" ZJBR "回精:exert regenerate"
+      ZJSEP "b4:内力" ZJBR "疗伤:exert heal" ZJSEP "b5:内功" ZJBR "加力:enforce" + "\n");
+  else if (arg == "fight")
+    "/cmds/skill/perform"->main(me);
+  else if (arg == "quest")
+    write(BT "b1:查看" ZJBR "任务:quest" ZJSEP "b2:排行" ZJBR "榜单:top" + "\n");
+  else if (arg == "help")
+    write(BT "b1:基本" ZJBR "系统:help" ZJSEP "b2:新手" ZJBR "指南:help newbie" ZJSEP "b3:游戏" ZJBR "特色:help feature"
+      ZJSEP "b4:指令" ZJBR "列表:help commands" ZJSEP "b5:自杀" ZJBR "重来:suicide" + "\n");
+  return 1;
+}
+
+int help(object me) {
+  write("这个指令显示网页客户端底部的按钮菜单。\n");
+  return 1;
+}
