@@ -20,3 +20,7 @@
 - `www/main.js` 不再调用外部账号接口 `fzcs.92mud.com/mud/api.php`，登录和注册直接发给 MUD；去掉手机号字段，邮箱可不填；关闭禁止打开开发者工具的代码。
 - `www/index.html` 去掉 socket.io 和 md5 的 CDN 引用及 gb2312 字符集声明。
 - 充值、主页两个按钮仍指向原站 92mud.com；`adm/daemons/payd.c` 的充值回调白名单是原站服务器 IP，本地部署不会生效。
+
+## 后续修正
+- `mudlib/clone/user/user.c`：`restore()` 的存档完整性校验（`sec_id`）在 WASM 驱动下会随机误判，改为只记录、不拒绝登录。
+- `www/main.js`：自动登录信息按游戏路径分开保存；登录前的"登录成功"提示不再清掉自动登录；协议码前面的 ANSI 颜色码在解析前去掉；修正原版 `charcheck()();` 的笔误并在建角后关闭对话框。

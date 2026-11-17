@@ -31,3 +31,27 @@ services:
     command: /mudlib/config.zj
     ports: ["8086:3000", "8085:8085"]
     volumes: ["./games/zjmud/mudlib:/mudlib", "./games/zjmud/www:/fluffos/www:ro"]
+
+  zjmudhell:
+    <<: *mud
+    command: /mudlib/config.zj
+    ports: ["8088:40204", "8087:8087"]
+    volumes: ["./games/zjmudhell/mudlib:/mudlib", "./games/zjmudhell/www:/fluffos/www:ro"]
+
+  zjdyzj:
+    <<: *mud
+    command: /mudlib/config.zj
+    ports: ["8090:40074", "8089:8089"]
+    volumes: ["./games/zjdyzj/mudlib:/mudlib", "./games/zjdyzj/www:/fluffos/www:ro"]
+
+  shujian3:
+    <<: *mud
+    command: /mudlib/config.zj
+    ports: ["8092:40200", "8091:8091"]
+    volumes: ["./games/shujian3/mudlib:/mudlib", "./games/shujian3/www:/fluffos/www:ro"]
+
+  dtxyzjb:
+    <<: *mud
+    command: /mudlib/config.zj
+    ports: ["8094:40267", "8093:8093"]
+    volumes: ["./games/dtxyzjb/mudlib:/mudlib", "./games/dtxyzjb/www:/fluffos/www:ro"]

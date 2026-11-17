@@ -594,9 +594,9 @@ function userBT()
 	var w = (mycmdsob.width()-25)/6;
 	for(var i=1;i<11;i++)
 	{
-		if(localStorage.getItem("mybt"+i))
+		if(zjStore.getItem("mybt"+i))
 		{
-			var str = localStorage.getItem("mybt"+i).split(',');
+			var str = zjStore.getItem("mybt"+i).split(',');
 			mycmdsob.append('<button style="color:'+textcol+';margin:2px;width:'+w+'px;height:42px;" type="button" id="'+str[1]+'" onclick="cmdsa(this)">' + str[0]+ '</button>');
 		}
 		else
@@ -622,8 +622,8 @@ function setBT(sn)
 	writeToHD('请输入你要对【按钮'+sn+'】的定义：\n[ 按钮名字,要执行的指令 ]\n');
 	mycmdsob.hide();
 	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:95%;height:22px;font-size:15px;padding:6px" id="chatmsg"></textarea>');
-	if(localStorage.getItem('mybt'+sn))
-		$('textarea#chatmsg').val(localStorage.getItem('mybt'+sn));
+	if(zjStore.getItem('mybt'+sn))
+		$('textarea#chatmsg').val(zjStore.getItem('mybt'+sn));
 	hudongob.append('<br><button style="color:'+textcol+';width:'+(97/3)+'%;height:'+(scrh/18+5)+'px;" onclick="setBTOK('+sn+')">确定</button>');
 	hudongob.append('<button style="color:'+textcol+';width:'+(97/3)+'%;height:'+(scrh/18+5)+'px;" onclick="close_hd()">取消</button>');
 }
@@ -642,7 +642,7 @@ function setBTOK(sn)
 		alert("格式错误！请输入：名称和需要执行的指令，中间用英文逗号隔开。");
 		return;
 	}
-	localStorage.setItem('mybt'+sn,str);
+	zjStore.setItem('mybt'+sn,str);
 	$('textarea#chatmsg').val('');
 	close_hd();
 	writeToScreen('按钮'+sn+'自定义完毕。\n');
@@ -772,9 +772,9 @@ function logincheck(id,pass) {
 	chatob.html('欢迎来到'+ titled+'！<br>');
 	setCookie('myid',myid);
 	setCookie('mypass',mypass);
-	localStorage.setItem('myid',myid);
-	localStorage.setItem('mypass',mypass);
-	localStorage.setItem('auto_login',true);
+	zjStore.setItem('myid',myid);
+	zjStore.setItem('mypass',mypass);
+	zjStore.setItem('auto_login',true);
 	sock.emit('stream',myid+'║'+mypass+'║'+user_key+'║'+(mymail||'none@local')+'\n');
 	try { hudongob.dialog("close"); } catch (e) {}
 };
@@ -831,9 +831,9 @@ function registercheck() {
 
 	setCookie('myid',myid);
 	setCookie('mypass',mypass);
-	localStorage.setItem('myid',myid);
-	localStorage.setItem('mypass',mypass);
-	localStorage.setItem('auto_login',true);
+	zjStore.setItem('myid',myid);
+	zjStore.setItem('mypass',mypass);
+	zjStore.setItem('auto_login',true);
 	regtoken = myid+'║'+mypass+'║'+ user_key +'║'+mymail+'\n';
 	sock.emit('stream', regtoken);
 	hudongob.dialog("close");
@@ -1009,14 +1009,16 @@ function writecmd() {
 
 function writeServerData(buf) {
 	var line = buf;
+	// strip ANSI colour codes that precede a protocol code (e.g. NOR after \n)
+	line = line.replace(/^(?:\x1b\[[0-9;]*m)+(?=\x1b\d{3})/, '');
 	
 		if(line.length<4) return;
 
 		if(line.substr(0,6)=='版本验证成功')
 		{
-			if(localStorage.getItem('myid')&&localStorage.getItem('mypass')&&localStorage.getItem('auto_login'))
+			if(zjStore.getItem('myid')&&zjStore.getItem('mypass')&&zjStore.getItem('auto_login'))
 			{
-				logincheck(localStorage.getItem('myid'),localStorage.getItem('mypass'));
+				logincheck(zjStore.getItem('myid'),zjStore.getItem('mypass'));
 			}
 			else
 			{
@@ -1061,10 +1063,10 @@ function writeServerData(buf) {
 
 		if(!loginok)
 		{
-			if(line.substr(0,4)=='015')//弹出提示
+			if(line.substr(0,4)=='015'&&line.substr(4,4)!='登录成功')//弹出提示（登录成功不算错误）
 			{
 				alert(line.substr(4));
-				localStorage.removeItem('auto_login');
+				zjStore.removeItem('auto_login');
 				writelogin();
 			}
 			return;

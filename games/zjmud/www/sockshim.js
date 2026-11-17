@@ -1,3 +1,12 @@
+// Per-game localStorage namespace (several zj games may share one origin).
+window.zjStore = (function () {
+  var p = 'zj:' + location.pathname.replace(/[^/]*$/, '') + ':';
+  return {
+    getItem: function (k) { return localStorage.getItem(p + k); },
+    setItem: function (k, v) { localStorage.setItem(p + k, v); },
+    removeItem: function (k) { localStorage.removeItem(p + k); }
+  };
+})();
 // Replacement for socket.io: talk to the FluffOS websocket port directly.
 // Mimics the old node webtelnet proxy: on connect it sends the client key line,
 // and relays 'stream' events both ways as UTF-8 text.

@@ -18,7 +18,11 @@ export const GAMES = [
   { id: 'es2', config: 'config.es2', title: '东方故事 II', desc: 'ES2 经典武侠，众多武侠 MUD 的母本' },
   { id: 'jy', config: 'config.jy', title: '金庸群侠传', desc: '金庸小说人物与门派' },
   { id: 'xyj', config: 'config.xyj', title: '西游记 2006', desc: '西游神魔世界，数据最大，首次加载较慢' },
-  { id: 'zjmud', config: 'config.zj', title: '书剑江湖', desc: '指间争锋 MUD，图形按钮界面' },
+  { id: 'zjmud', config: 'config.zj', title: '书剑江湖', desc: '指间争锋 MUD，图形按钮界面', zj: true },
+  { id: 'zjmudhell', config: 'config.zj', title: '指尖MUD', desc: '指间协议，地狱家族地图，图形按钮界面', zj: true },
+  { id: 'zjdyzj', config: 'config.zj', title: '终极地狱·指间版', desc: '地狱无门，投胎转世选品质，图形按钮界面', zj: true },
+  { id: 'shujian3', config: 'config.zj', title: '书剑3', desc: '独立书剑代码，副本与帮会，图形按钮界面', zj: true },
+  { id: 'dtxyzjb', config: 'config.zj', title: '大唐西游·指间版', desc: '西游题材指间版，数据较大，图形按钮界面', zj: true },
 ];
 
 for (const f of ['fluffos.js', 'fluffos.wasm']) {
@@ -62,12 +66,12 @@ function patchZjmud(dir, g) {
   const f = path.join(dir, 'sockshim.js');
   let s = fs.readFileSync(f, 'utf8');
   const from = "var ws = new WebSocket(url, ['telnet']);";
-  if (!s.includes(from)) throw new Error('zjmud sockshim pattern not found');
+  if (!s.includes(from)) throw new Error(g.id + ': sockshim pattern not found');
   s = s.replace(from, 'var ws = new MudWasm.Socket();');
   fs.writeFileSync(f, s);
   const fi = path.join(dir, 'index.html');
   let html = fs.readFileSync(fi, 'utf8');
-  if (!html.includes('<script src="sockshim.js"></script>')) throw new Error('zjmud index pattern not found');
+  if (!html.includes('<script src="sockshim.js"></script>')) throw new Error(g.id + ': index pattern not found');
   html = html.replace('<script src="sockshim.js"></script>', head(g) + '<script src="sockshim.js"></script>');
   html = html.replace('</body>', toolbar + '\n</body>');
   fs.writeFileSync(fi, html);
@@ -77,7 +81,7 @@ for (const g of GAMES) {
   const dst = path.join(out, g.id);
   fs.cpSync(path.join(root, 'games', g.id, 'www'), dst, { recursive: true });
   for (const junk of ['AGENTS.md', 'README.md', 'wasm']) fs.rmSync(path.join(dst, junk), { recursive: true, force: true });
-  if (g.id === 'zjmud') patchZjmud(dst, g);
+  if (g.zj) patchZjmud(dst, g);
   else {
     const fi = path.join(dst, 'index.html');
     fs.writeFileSync(fi, patchTerminalClient(fs.readFileSync(fi, 'utf8'), g));

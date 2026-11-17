@@ -1,0 +1,9 @@
+// 慈悲佛法(cibei-fofa.c)
+
+inherit SKILL;
+
+varargs int valid_learn(object me) {
+  if (!me->query("rebornfofa"))
+    return notify_fail("你业障未破如何修习佛法？\n");
+  return 1;
+}

@@ -1,0 +1,41 @@
+/* Identity GB/BIG5 converter.
+ *
+ * The archive table (inittable + BtoG/GtoB) is leftover iconv garbage:
+ * FluffOS rejects it at compile time (`Illegal character 0xce` on the
+ * Greek-letter rows). login.lpc receive_message() calls CONVERT_D->output()
+ * on the first write() in logon(), so a dead daemon disconnects every
+ * telnet before get_id. The work tree is UTF-8; sibling dtxywzxzb maps
+ * both encodings to passthrough. Same interface: input, output, BIG2GB,
+ * GB2BIG.
+ */
+
+#include <mudlib.h>
+
+inherit F_DBASE;
+
+string BIG2GB(string str)
+{
+	return str;
+}
+
+string GB2BIG(string str)
+{
+	return str;
+}
+
+string input(string str, object me)
+{
+	return str;
+}
+
+string output(string str, object me)
+{
+	return str;
+}
+
+void create()
+{
+	seteuid(getuid());
+	set("name", "GB BIG5 converter");
+	set("id", "GB BIG5 converter");
+}

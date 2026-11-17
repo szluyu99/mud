@@ -1,0 +1,5 @@
+#/adm/daemons/securityd.c
+extend_trusted_read ([])
+extend_trusted_write ([])
+grant ([])
+site_privilege ([])

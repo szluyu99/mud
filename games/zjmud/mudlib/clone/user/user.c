@@ -174,16 +174,16 @@ int restore()
 				log_file("static/user",
 					 sprintf("%s %s's data my be corrupt.\n",
 						 log_time(), getuid()));
-				user_cracked = 1;
-				return 0;
+				// single-player build: integrity check is log-only
+				// user_cracked = 1; return 0;
 			}
 		} else
 		{
 			log_file("static/user",
 				 sprintf("%s %s lost assure key.\n",
 					 log_time(), getuid()));
-			user_cracked = 1;
-			return 0;
+			// single-player build: integrity check is log-only
+			// user_cracked = 1; return 0;
 		}
 */
 		// 数据完整
