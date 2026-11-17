@@ -653,9 +653,9 @@ function setBTOK(sn)
 }
 
 function writeToMU(str) {
-	// "bNN:名字:指令" items configure the bottom menu buttons at login;
+	// the top-level menu (常用/技能/... -> mycmds ofen etc.) configures the bottom bar;
 	// they are not a popup menu, so don't open the panel over the room.
-	if (/^b\d+:/.test(str)) { zjBottomBT(str); return; }
+	if (str.indexOf(':mycmds ofen') >= 0) { zjBottomBT(str); return; }
 	mycmdsob.show();
 	var strs = str.split("$zj#");
 	mycmdsob.html('');
