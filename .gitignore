@@ -1,0 +1,12 @@
+core.*
+*.pyc
+.DS_Store
+._*
+# runtime data created by the games
+games/*/mudlib/data/user/*
+games/*/mudlib/data/login/*
+games/*/mudlib/log/**
+!games/*/mudlib/data/user/.gitkeep
+!games/*/mudlib/data/login/.gitkeep
+!games/*/mudlib/log/**/
+!games/*/mudlib/log/**/.gitkeep

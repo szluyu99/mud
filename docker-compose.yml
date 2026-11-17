@@ -1,0 +1,33 @@
+# Build the driver first:  docker build -t fluffos-mud -f docker/Dockerfile docker
+# Start all games:  docker compose up -d
+# Start one game:   docker compose up -d zjmud
+# Data written by the games (player saves, logs) goes into games/<name>/mudlib/{data,log}.
+x-mud: &mud
+  image: fluffos-mud:latest
+  restart: unless-stopped
+  user: "${UID:-1000}:${GID:-1000}"
+
+services:
+  jy:
+    <<: *mud
+    command: /mudlib/config.jy
+    ports: ["4000:4000", "8081:8081"]
+    volumes: ["./games/jy/mudlib:/mudlib", "./games/jy/www:/fluffos/www:ro"]
+
+  es2:
+    <<: *mud
+    command: /mudlib/config.es2
+    ports: ["4100:4100", "8082:8082"]
+    volumes: ["./games/es2/mudlib:/mudlib", "./games/es2/www:/fluffos/www:ro"]
+
+  xyj:
+    <<: *mud
+    command: /mudlib/config.xyj
+    ports: ["8084:5555", "8083:8083"]
+    volumes: ["./games/xyj/mudlib:/mudlib", "./games/xyj/www:/fluffos/www:ro"]
+
+  zjmud:
+    <<: *mud
+    command: /mudlib/config.zj
+    ports: ["8086:3000", "8085:8085"]
+    volumes: ["./games/zjmud/mudlib:/mudlib", "./games/zjmud/www:/fluffos/www:ro"]

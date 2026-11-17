@@ -1,0 +1,66 @@
+# FluffOS runtime config for 金庸群侠传 (jy mudlib)
+name : 西游记2006
+mud ip : 0.0.0.0
+port number : 5555
+external_port_2: websocket 8083
+websocket http dir : /fluffos/www
+
+mudlib directory : /mudlib
+log directory : /log
+include directories : /include
+master file : /adm/obj/master
+simulated efun file : /adm/obj/simul_efun
+debug log file : debug.log
+global include file : <globals.h>
+default fail message : 什么？
+default error message : 你发现事情不大对了，但是又说不上来。
+
+time to clean up : 1800
+time to reset : 1800
+time to swap : 600
+maximum bits in a bitfield : 1200
+maximum call depth : 50
+maximum evaluation cost : 30000000
+maximum array size : 15000
+maximum buffer size : 400000
+maximum mapping size : 150000
+inherit chain size : 30
+maximum string length : 200000
+maximum read file size : 400000
+maximum byte transfer : 20000
+hash table size : 7001
+object table size : 4001
+living hash table size : 256
+gametick msec : 100
+heartbeat interval msec : 1000
+sane explode string : 0
+reversible explode string : 0
+sane sorting : 0
+call other type check : 0
+call other warn : 0
+mudlib error handler : 0
+no resets : 0
+lazy resets : 0
+randomized resets : 1
+no ansi : 0
+strip before process input: 1
+this_player in call_out : 1
+trace : 0
+trace code : 0
+interactive catch tell : 0
+receive snoop : 1
+snoop shadowed : 0
+reverse defer : 0
+has console : 0
+noninteractive stderr write : 0
+trap crashes : 1
+old type behavior : 1
+old range behavior : 1
+warn old range behavior : 0
+suppress argument warnings : 1
+enable_commands call init : 1
+sprintf add_justified ignore ANSI colors : 1
+call_out(0) nest level : 1000
+maximum users : 200
+evaluator stack size : 3000
+compiler stack size : 600

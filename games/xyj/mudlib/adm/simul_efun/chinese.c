@@ -1,0 +1,19 @@
+
+string chinese_number(int i)
+{
+	return CHINESE_D->chinese_number(i);
+}
+
+string to_chinese(string str)
+{
+	return CHINESE_D->chinese(str);
+}
+
+int is_chinese(string str)
+{
+	int i;
+	if( !stringp(str) || !strlen(str) ) return 0;
+	for(i=0; i<strlen(str); i++)
+		if( str[i] < 0x2E80 || str[i] > 0x9FFF ) return 0;
+	return 1;
+}
