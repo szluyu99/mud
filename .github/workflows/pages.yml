@@ -1,0 +1,51 @@
+name: Deploy single-player site to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  FLUFFOS_VERSION: v2026.1101.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download FluffOS wasm driver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$FLUFFOS_VERSION" -R fluffos/fluffos -p '*wasm.zip' -D /tmp/fluffos
+          mkdir -p web/driver
+          unzip -q -j /tmp/fluffos/*wasm.zip '*fluffos.js' '*fluffos.wasm' -d web/driver
+          ls -l web/driver
+      - name: Build site
+        run: node web/build.mjs --driver web/driver --out site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

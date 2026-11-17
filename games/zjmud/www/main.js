@@ -717,7 +717,7 @@ function writechar() {
 		position:["center",72],
 		buttons: {
 			"确认建立": function() {
-				charcheck()();
+				charcheck();
 			},
 		}
 	});
@@ -776,7 +776,7 @@ function logincheck(id,pass) {
 	localStorage.setItem('mypass',mypass);
 	localStorage.setItem('auto_login',true);
 	sock.emit('stream',myid+'║'+mypass+'║'+user_key+'║'+(mymail||'none@local')+'\n');
-	hudongob.dialog("close");
+	try { hudongob.dialog("close"); } catch (e) {}
 };
 
 function writeregister() {	
@@ -856,6 +856,7 @@ function charcheck() {
 	chatob.html('角色创建中......<br>');
 
 	sock.emit('stream',mysex.val()+'║001║'+myname.val()+'\n');
+	hudongob.dialog("close");
 };
 
 function relogin()
