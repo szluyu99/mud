@@ -1,0 +1,36 @@
+// hp1.lpc — 网页客户端顶部状态条（012 协议），移植自 zjmudhell，只用本游戏已有的属性
+#include <ansi.h>
+#include <zjmud.h>
+inherit F_CLEAN_UP;
+
+int main(object me, string arg) {
+  mapping my;
+  string sp;
+
+  if (!me || !userp(me)) return 0;
+  my = me->query_entire_dbase();
+  if (!stringp(my["born"]) || !my["born"]) return 1;
+  if (my["max_jing"] < 1 || my["max_qi"] < 1) return 1;
+
+  sp = ZJHPTXT + sprintf("%s:100/100:%s", my["name"], "#000000");
+  sp += "║" + sprintf("经.%d:%d/%d:%s", my["combat_exp"], my["combat_exp"],
+    F_LEVEL->level_max_exp(me), "#BBFF00FF");
+  sp += "║" + sprintf("气.%d:%d/%d/%d:%s", my["qi"], my["qi"], my["eff_qi"], my["max_qi"], "#BBFF0000");
+  sp += "║" + sprintf("内.%d:%d/%d/%d:%s", my["neili"], my["neili"], my["max_neili"],
+    my["max_neili"] > 0 ? my["max_neili"] : 1, "#BB0000FF");
+  sp += "║" + sprintf("精.%d:%d/%d/%d:%s", my["jing"], my["jing"], my["eff_jing"], my["max_jing"], "#BBFF0066");
+  sp += "║" + sprintf("精.%d:%d/%d/%d:%s", my["jingli"], my["jingli"], my["max_jingli"],
+    my["max_jingli"] > 0 ? my["max_jingli"] : 1, "#BB6600CC");
+  sp += "║" + sprintf("食.%d:%d/%d:%s", my["food"], my["food"], me->max_food_capacity(), "#BBFF6600");
+  sp += "║" + sprintf("水.%d:%d/%d:%s", my["water"], my["water"], me->max_water_capacity(), "#BB0066FF");
+  sp += "║" + sprintf("潜.%d:%d/%d/%d:%s", my["potential"] - my["learned_points"],
+    my["potential"] - my["learned_points"], my["potential"],
+    my["potential"] > 0 ? my["potential"] : 1, "#BB006600");
+  tell_object(me, sp + "\n");
+  return 1;
+}
+
+int help(object me) {
+  write("网页客户端状态条刷新用，不需要手动输入。\n");
+  return 1;
+}

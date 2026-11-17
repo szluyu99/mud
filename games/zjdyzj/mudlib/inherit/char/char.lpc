@@ -85,6 +85,9 @@ void heart_beat() {
   me = this_object();
   my = query_entire_dbase();
 
+  // 网页客户端状态条（012），每次心跳推送一次
+  if (userp(me)) "/cmds/usr/hp1"->main(me);
+
   if (userp(me) && living(me) && mapp(my["env"])) {
     // update prompt
     prompt = my["env"]["prompt"];

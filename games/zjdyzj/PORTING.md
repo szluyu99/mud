@@ -25,3 +25,4 @@ fluffos/mudlibs 已经把源码转成 UTF-8 并修好了 FluffOS 下的编译问
 
 ## 补充的命令
 上游的 zjdyzj 没有 `mycmds` 和 `liaotian` 两个命令，网页客户端底部的“常用/技能/战斗/任务/帮助/聊天”按钮发的都是这两个命令，点了只会显示“什么？”。已从指尖MUD 移植过来（`cmds/usr/mycmds.lpc`、`cmds/usr/liaotian.lpc`），菜单里的条目换成了本游戏实际存在的命令。
+- 上游没有给网页客户端推送状态条（`012` 协议），页面上看不到气血/内力等。新增 `cmds/usr/hp1.lpc`（按指尖MUD 的格式，只用本游戏已有的属性），并在 `inherit/char/char.lpc` 的 `heart_beat()` 里对玩家每次心跳调用一次。
