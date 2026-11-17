@@ -31,8 +31,8 @@ int main(object me, string arg) {
 
   line = "";
   tmp = ZJOBACTS2 + ZJMENUF(2, 2, 10, 30);
-  wp1 = "无:null" ZJSEP;
-  wp2 = "无:null" ZJSEP;
+  wp1 = "无:look" ZJSEP;
+  wp2 = "无:look" ZJSEP;
 
   weapon = ob->query_temp("weapon");
   second_weapon = ob->query_temp("secondary_weapon");
@@ -66,7 +66,7 @@ int main(object me, string arg) {
   tmp += sprintf(
     "[帽子]：%s[武器]：%s",
     name_temp(ob, "armor/head"),
-    (name_temp(ob, "armor/hands") != "无:null" ZJSEP) ? name_temp(ob, "armor/hands") : wp1
+    (name_temp(ob, "armor/hands") != "无:look" ZJSEP) ? name_temp(ob, "armor/hands") : wp1
   );
   tmp += sprintf("[护甲]：%s[衣服]：%s", name_temp(ob, "armor/armor"), name_temp(ob, "armor/cloth"));
   tmp += sprintf("[披风]：%s[护盾]：%s", name_temp(ob, "armor/surcoat"), name_temp(ob, "armor/shield"));
@@ -88,7 +88,7 @@ string name_temp(object ob, string type) {
   if (objectp(obj = ob->query_temp(type))) {
     name = obj->query("name") + ":look " + file_name(obj) + ZJSEP;
   } else {
-    name = "无:null" ZJSEP;
+    name = "无:look" ZJSEP;
   }
   return name;
 }

@@ -43,11 +43,14 @@ const head = (g) =>
   `<script>MudWasm.start({ game: ${JSON.stringify(g.id)}, config: ${JSON.stringify(g.config)} });</script>\n`;
 
 const toolbar = `
-<div id="mudwasm-bar" style="position:fixed;right:6px;bottom:6px;z-index:9999;font:12px sans-serif;opacity:.75">
+<div id="mudwasm-bar" style="position:fixed;right:4px;top:4px;z-index:9999;font:12px sans-serif;opacity:.8;text-align:right">
+  <button onclick="var p=document.getElementById('mudwasm-panel');p.style.display=p.style.display=='none'?'block':'none'" title="存档 / 换游戏">存档</button>
+  <div id="mudwasm-panel" style="display:none;margin-top:2px;background:#222;padding:3px;border-radius:3px">
   <button onclick="MudWasm.exportSave()" title="下载存档文件">导出存档</button>
   <label style="cursor:pointer"><input type="file" accept=".json" style="display:none" onchange="this.files[0]&&MudWasm.importSave(this.files[0])"><button onclick="this.previousElementSibling.click()" title="从文件恢复存档">导入存档</button></label>
   <button onclick="MudWasm.resetSave()" title="清除本浏览器中的存档">重置</button>
   <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>
+  </div>
 </div>`;
 
 function patchTerminalClient(html, g) {

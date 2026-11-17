@@ -10,7 +10,7 @@ int main(object me, string arg) {
   else if (arg == "ofen")
     write(ZJBTSET "b1:查看" ZJBR "背包:i" ZJSEP "b2:综合" ZJBR "属性:score" ZJSEP "b3:健康" ZJBR "状态:hp"
       ZJSEP "b4:查看" ZJBR "装备:arm" ZJSEP "b5:角色" ZJBR "升级:uplv" ZJSEP "b6:地图" ZJBR "相关:help mapb" ZJSEP "b7:暂未" ZJBR "设定:look"
-      ZJSEP "b8:睡觉" ZJBR "休息:sleep" ZJSEP "b9:暂未" ZJBR "设定:look:recall back" ZJSEP "b10:在线" ZJBR "玩家:who" + "\n");
+      ZJSEP "b8:睡觉" ZJBR "休息:sleep" ZJSEP "b9:回城" ZJBR "扬州:recall back" ZJSEP "b10:在线" ZJBR "玩家:who" + "\n");
   else if (arg == "skill")
     write(ZJBTSET "b1:查看" ZJBR "技能:help chaski" ZJSEP "b2:日常" ZJBR "练功:help liangong" ZJSEP "b3:内力" ZJBR "回血:exert recover"
       ZJSEP "b4:内力" ZJBR "回精:exert regenerate" ZJSEP "b5:内力" ZJBR "疗伤:exert heal" ZJSEP "b6:内力" ZJBR "疗神:exert inspire"

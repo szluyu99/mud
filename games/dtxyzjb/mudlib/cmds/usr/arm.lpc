@@ -42,8 +42,8 @@ int main(object me, string arg)
 
 	line="";
 	tmp=ZJOBACTS2+ZJMENUF(2,2,10,30);
-	wp1="无:null"ZJSEP;
-	wp2="无:null"ZJSEP;
+	wp1="无:look"ZJSEP;
+	wp2="无:look"ZJSEP;
 
 	weapon= ob->query_temp("weapon");
 	second_weapon= ob->query_temp("secondary_weapon");
@@ -102,7 +102,7 @@ string name_temp(object ob,string type)
 	}
 	else
 	{
-		name = "无:null"ZJSEP;
+		name = "无:look"ZJSEP;
 	}
 	return name;
 }

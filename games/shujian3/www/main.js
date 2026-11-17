@@ -713,7 +713,7 @@ function writelogin() {
 	hudongob.append('<span class="out"><input type="password" value="'+getCookie('mypass')+'" id="pass"></span><br><br>');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="登录游戏" onclick="logincheck()" />');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="注册账号" onclick="writeregister()" />');
-	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="游戏主页" onclick="main_login()" />');
+	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="换游戏" onclick="main_login()" />');
 };
 
 function writechar() {
@@ -870,7 +870,8 @@ function relogin()
 {
 	sock.emit('stream','quit\n');
 	delCookie('auto_login');
-	location.reload(true);
+	zjStore.removeItem('auto_login');
+	setTimeout(function(){ location.reload(); }, 800);
 };
 
 function filepath(obj)  
@@ -926,12 +927,12 @@ function foransitext()
 
 function paym()
 {
-	window.open("http://xyzx.92mud.com/alipay/");
+	
 	close_hd();
 }
 function main_login()
 {
-	window.open("http://www.92mud.com");
+	location.href = "../";
 	close_hd();
 }
 function room_set()
@@ -985,8 +986,8 @@ function config()
 		chat_value = '聊天(宽)';
 	}
 	
-	hudongob.append('<br><input type="button" style="color:#ff0000;margin:3px;width:80px;height:35px" id="exit_login" value="游戏充值" onclick="paym()" />');
-	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="游戏主页" onclick="main_login()" /><br>');
+	hudongob.append('<br>');
+	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="换游戏" onclick="main_login()" /><br>');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="toggleBtn" value='+long_value+' onclick="room_set()" />');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="toggleChatBtn" value='+chat_value+' onclick="toggleChat()" />');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="退出游戏" onclick="relogin()" />');
