@@ -85,6 +85,9 @@ void    user_logout(mixed user, string msg);
 private int startup_udp()
 {
 	int err_no;
+#if !efun_defined(socket_create)
+	return 0; // browser build: no sockets
+#endif
 
 	if (socket_id) return 0;
 

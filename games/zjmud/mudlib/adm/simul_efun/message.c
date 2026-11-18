@@ -322,12 +322,13 @@ void tell_object(object ob, string str)
 
 varargs void tell_room(mixed ob, string str, object *exclude)
 {
+	if (!exclude) exclude = ({});
 	if (ob) message("tell_room", str, ob, exclude);
 }
 
 void shout(string str)
 {
-	message("shout", str, users(), this_player());
+	message("shout", str, users(), this_player() ? ({ this_player() }) : ({}));
 }
 
 void write(string str)
