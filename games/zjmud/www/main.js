@@ -988,6 +988,7 @@ function config()
 	
 	hudongob.append('<br>');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="jinshouzhi" value="金手指" onclick="cmdsa(this)" />');
+	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="autoquest" value="自动师门" onclick="cmdsa(this)" />');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="exit_login" value="换游戏" onclick="main_login()" /><br>');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="toggleBtn" value='+long_value+' onclick="room_set()" />');
 	hudongob.append('<input type="button" style="color:'+textcol+';margin:3px;width:80px;height:35px" id="toggleChatBtn" value='+chat_value+' onclick="toggleChat()" />');

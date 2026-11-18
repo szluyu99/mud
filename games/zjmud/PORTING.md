@@ -24,3 +24,4 @@
 ## 后续修正
 - `mudlib/clone/user/user.c`：`restore()` 的存档完整性校验（`sec_id`）在 WASM 驱动下会随机误判，改为只记录、不拒绝登录。
 - `www/main.js`：自动登录信息按游戏路径分开保存；登录前的"登录成功"提示不再清掉自动登录；协议码前面的 ANSI 颜色码在解析前去掉；修正原版 `charcheck()();` 的笔误并在建角后关闭对话框。
+- 新增自动师门：`adm/daemons/autoquestd.c`（每秒一个动作的状态机，广度优先找路 + 飞行落点）、`cmds/usr/autoquest.c`，网页「系统」菜单加「自动师门」按钮。
