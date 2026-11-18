@@ -504,6 +504,8 @@ void reincarnate()
 	ghost = 0;
 	set("eff_jing", query("max_jing"));
 	set("eff_qi", query("max_qi")+this_object()->query_gain_qi());
+	// single-player build: save on the next heartbeat after revival
+	if (userp(this_object())) set("last_save", 0);
 }
 
 int max_food_capacity() { return query("str") * 10 + 100; }

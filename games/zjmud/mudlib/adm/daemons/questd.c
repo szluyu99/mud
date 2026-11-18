@@ -285,6 +285,8 @@ if (who->query("relife/zhuanshi"))
 		who->add("combat_exp", exp*2);
 		tell_object(who,"在玄灵丹的作用下，你额外获得了"HIG+chinese_number(exp*2)+NOR"点经验。\n");
 	}
+	// single-player build: save on the next heartbeat after a reward
+	if (userp(who)) who->set("last_save", 0);
 }
 
 // 延迟奖励：有时候给出奖励的时候应该是在某些事件发生以后，
@@ -583,6 +585,7 @@ int ask_quest(object me, object who)
 	who->set("quest/limit", t);
 	message("vision", me->name() + "在你耳边悄声说道：“你务必要在" + CHINESE_D->chinese_monthday(t) + "之前完成！”\n", who);
 	who->start_busy(1);
+	who->set("last_save", 0);	// single-player build: save soon after taking a quest
 
 	while (objectp(lob = present("quest letter", who)))
 	    destruct(lob);

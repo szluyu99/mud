@@ -209,7 +209,7 @@ void heart_beat()
 	if (living(me))
 	{
 	    	period = t - ((int) my["last_save"]);
-	    	if (period < 0 || period > 5 * 60)
+	    	if (period < 0 || period > 60)	// single-player build: autosave every minute (was 5 min)
 	    	{
 			if (!me->save())
 			{

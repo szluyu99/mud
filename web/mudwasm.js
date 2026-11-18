@@ -105,6 +105,19 @@
     await idbPut(game, { saved: Date.now(), files });
   }
 
+  // Ask the mudlib (if it exports "mudwasm_save" through the jsbridge) to
+  // write every online player, then copy the files to IndexedDB. The LPC
+  // call runs inside the next fluffos_tick, so tick once by hand: pagehide
+  // gives no time for the normal timer loop.
+  function saveAndSync() {
+    try {
+      if (M && sockets.size && M.ccall('fluffos_lpc_call', 'number', ['string', 'string'], ['mudwasm_save', '[]']) >= 0)
+        M.ccall('fluffos_tick', 'number', ['number'], [performance.now()]);
+      if (DEBUG) console.log('[mudwasm] saved + synced');
+    } catch (e) { console.error(e); }
+    sync().catch(console.error);
+  }
+
   async function unpack(url) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('fetch ' + url + ': ' + resp.status);
@@ -171,8 +184,8 @@
       tick();
       lastSig = '';
       setInterval(() => sync().catch(console.error), SYNC_MS);
-      document.addEventListener('visibilitychange', () => { if (document.hidden) sync().catch(console.error); });
-      window.addEventListener('pagehide', () => { sync().catch(console.error); });
+      document.addEventListener('visibilitychange', () => { if (document.hidden) saveAndSync(); });
+      window.addEventListener('pagehide', saveAndSync);
       status(null);
       waiting.splice(0).forEach((s) => s._open());
     })().catch((e) => { status('启动失败：' + e.message); throw e; });
@@ -235,7 +248,7 @@
         const q = this._sq; this._sq = [];
         for (const x of q) if (this.readyState === 1) M.ccall('fluffos_input', null, ['number', 'array', 'number'], [this.id, x, x.length]);
         // persist shortly after player input (saves usually follow a command)
-        clearTimeout(syncSoon); syncSoon = setTimeout(() => sync().catch(console.error), 2000);
+        clearTimeout(syncSoon); syncSoon = setTimeout(saveAndSync, 2000);
       }, 0);
     }
     close() {

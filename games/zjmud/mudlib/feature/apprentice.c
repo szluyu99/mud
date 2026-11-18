@@ -23,6 +23,8 @@ void assign_apprentice(string title, int privs)
 
     	family["title"] = title;
 	family["privs"] = privs;
+	// single-player build: save on the next heartbeat after joining a family
+	if (userp(this_object())) set("last_save", 0);
 
 	if (userp(this_object()) || ! query("title"))
 	{

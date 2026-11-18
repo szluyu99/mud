@@ -1,0 +1,37 @@
+// websaved.lpc
+// single-player browser build: autosave every online player once a minute
+// (closing the tab ends the game without quit, so long gaps lose progress)
+// and let the page ask for a save before the tab is hidden or closed
+// (MudWasm calls "mudwasm_save" through the jsbridge).
+
+int save_all()
+{
+	object ob, link_ob;
+	int n;
+
+	foreach (ob in users())
+	{
+		if (! objectp(ob) || ! environment(ob)) continue;
+		if (! objectp(link_ob = ob->query_temp("link_ob"))) continue;
+		link_ob->save();
+		if (ob->save()) n++;
+		ob->set("last_save", time());
+	}
+	return n;
+}
+
+void auto_save()
+{
+	remove_call_out("auto_save");
+	call_out("auto_save", 60);
+	catch(save_all());
+}
+
+void create()
+{
+	seteuid(ROOT_UID);
+#if efun_defined(js_export)
+	js_export("mudwasm_save", (: save_all :));
+#endif
+	call_out("auto_save", 60);
+}

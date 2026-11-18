@@ -25,3 +25,4 @@
 /adm/daemons/network/dns_master
 /adm/daemons/cpud
 /adm/daemons/suitd
+/adm/daemons/websaved

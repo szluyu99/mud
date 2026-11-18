@@ -26,3 +26,5 @@
 /adm/daemons/bossd
 /adm/daemons/suitd
 /adm/daemons/autonpc
+/adm/daemons/websaved
+
