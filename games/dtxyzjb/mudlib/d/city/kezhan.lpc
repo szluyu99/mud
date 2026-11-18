@@ -52,7 +52,7 @@ verb = query_verb();
 
     // if (verb == "bian") return 1; // by mon 7/15
     if (verb == "xiudao") return 1;
-    if (verb == "exert") return 1;
+    if (verb == "exert") { write("客栈里人来人往，不是运功的地方。\n"); return 1; }
     return 0;
 }
 

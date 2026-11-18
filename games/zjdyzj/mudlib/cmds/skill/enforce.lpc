@@ -1,3 +1,7 @@
+#include <zjmud.h>
+#ifndef ZJMENUF
+#define ZJMENUF(r,w,h,s) "$"+r+","+w+","+h+","+s+"#"
+#endif
 // enforce.c
 
 inherit F_CLEAN_UP;
@@ -6,7 +10,8 @@ int main(object me, string arg) {
   int pts;
 
   if (!arg || (arg != "none" && !sscanf(arg, "%d", pts)))
-    return notify_fail("指令格式：enforce|jiali <使出几成内力伤敌>|none\n");
+    return notify_fail(INPUTTXT("你要用多少内力伤敌？（最多为内功等级的一半）", "enforce $txt#") + "\n"
+      ZJOBACTS2 ZJMENUF(3, 3, 8, 30) "取消加力:enforce none\n");
 
   if (!me->query_skill_mapped("force"))
     return notify_fail("你必须先 enable 一种内功。\n");

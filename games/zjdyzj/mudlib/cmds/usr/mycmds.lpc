@@ -17,7 +17,8 @@ int main(object me, string arg) {
     write(BT "b1:查看" ZJBR "技能:skills" ZJSEP "b2:内力" ZJBR "回血:exert recover" ZJSEP "b3:内力" ZJBR "回精:exert regenerate"
       ZJSEP "b4:内力" ZJBR "疗伤:exert heal" ZJSEP "b5:内功" ZJBR "加力:enforce" + "\n");
   else if (arg == "fight")
-    "/cmds/skill/perform"->main(me);
+    write(BT "b1:内力" ZJBR "回血:exert recover" ZJSEP "b2:内力" ZJBR "回精:exert regenerate" ZJSEP "b3:内力" ZJBR "疗伤:exert heal"
+      ZJSEP "b4:内功" ZJBR "加力:enforce" ZJSEP "b5:查看" ZJBR "状态:hp" ZJSEP "b6:武功" ZJBR "绝招:perform" + "\n");
   else if (arg == "quest")
     write(BT "b1:查看" ZJBR "任务:quest" ZJSEP "b2:排行" ZJBR "榜单:top" + "\n");
   else if (arg == "help")

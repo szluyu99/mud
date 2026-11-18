@@ -26,16 +26,13 @@ void popMenus(object me, string itemId) {
   itemId = ob->query("id");
   //write(itemId+"\n");
   pops = ZJPOPMENU;
-  pops += "放入神行袋|cwd join " + itemId + ZJSP2;
   pops += "查看 " + itemName + "|look " + itemId + ZJSP2;
-  pops += "手持 " + itemName + "|hand " + itemId + ZJSP2;
   pops += "放下 " + itemName + "|unwield " + itemId + ZJSP2;
   pops += "喝下 " + itemName + "|drink " + itemId + ZJSP2;
   pops += "吃下 " + itemName + "|eat " + itemId + ZJSP2;
   pops += "穿戴 " + itemName + "|wear " + itemId + ZJSP2;
   pops += "脱掉 " + itemName + "|remove " + itemId + ZJSP2;
   pops += "装备 " + itemName + "|wield " + itemId + ZJSP2;
-  pops += "下来 " + itemName + "|unride " + itemId + ZJSP2;
   pops += "研读 " + itemName + "|study " + itemId + ZJSP2;
   pops += "展示 " + itemName + "|eye " + itemId + ZJSP2;
   pops += "出售 " + itemName + "|sellob " + itemId + ZJSP2;
@@ -76,9 +73,7 @@ void popMenu(object me, string itemId) {
   //pops+= "asdasdasdasd"+ZJBR;
   //pops+= "------------------------\n";
   pops += ZJOBACTS2 + ZJMENUF(4, 4, 9, 32);
-  pops += "放入神行袋:cwd join " + itemId + ZJSEP;
   pops += "查看:look " + itemId + ZJSEP;
-  pops += "手持:hand " + itemId + ZJSEP;
   pops += "放下:unwield " + itemId + ZJSEP;
   pops += "穿戴:wear " + itemId + ZJSEP;
   pops += "装备:wield " + itemId + ZJSEP;
@@ -88,7 +83,6 @@ void popMenu(object me, string itemId) {
   pops += "研读:study " + itemId + ZJSEP;
   pops += "展示:eye " + itemId + ZJSEP;
   pops += "出售:sellob " + itemId + ZJSEP;
-  pops += "放入:pour " + itemId + ZJSEP;
   pops += "丢弃:drop " + itemId + ZJSEP;
 
   //加上物品自己的按钮 物品有BUTS属性就可以抓取出来显示

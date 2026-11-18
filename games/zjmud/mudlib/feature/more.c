@@ -11,18 +11,18 @@ void zj_more(string tab,string topic,string *text, int line, int page)
 	string show;
 
 	show = tab;
+	// slice 0-based: the old "+1" offset skipped the first text line,
+	// which blanked one-line help files such as help vip/eat
+	while (sizeof(text) && text[0] == "") text = text[1..];
+	if (!sizeof(text)) text = ({ "暂无内容。" });
+	if (line < 1) line = 1;
+	all = (sizeof(text) + line - 1) / line;
 	if(page<1) page = 1;
-	all = sizeof(text)/line;
-	if(page>(all+1)) page = all+1;
-	
-	i = page*line;
+	if(page>all) page = all;
+	now = page;
+	j = (page-1)*line;
+	i = page*line - 1;
 	if (i >= sizeof(text)) i = sizeof(text) - 1;
-	j = (page-1)*line+1;
-	if( j<0 ) j = 0;
-	now = i/line;
-	if(i%line) now += 1;
-	if(now<1) now = 1;
-	if(sizeof(text)%line) all += 1;
 	if(all>1)
 		show += sprintf("========= "HIY"%d/%d页"NOR" ========="ZJBR NOR,now,all);
 	show += implode(text[j..i], ZJBR);

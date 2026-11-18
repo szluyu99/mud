@@ -9,7 +9,7 @@ int main(object me, string str)
 	string *emotes,prefix,estr;
 	object env;
 	mixed info;
-	int i;
+	int i, j;
 
 	if (me->ban_say())
 		return 0;
@@ -32,8 +32,12 @@ int main(object me, string str)
 		emotes = EMOTE_D->query_all_emote();
 		estr = ZJOBLONG+"当前频道【"+me->query_temp("pindao/name")+"】，请选择表情动作：\n"ZJOBACTS2+ZJMENUF(3,3,8,30);
 //		for(i=0;i<sizeof(emotes);i++)
-		for(i=0;i<10;i++)
+		// list only emotes that work without a target (others fail on a channel)
+		for(i=0,j=0;i<sizeof(emotes) && j<10;i++)
 		{
+			mixed *ed = EMOTE_D->query_emote_data(emotes[i]);
+			if (!arrayp(ed) || sizeof(ed) < 2 || !stringp(ed[1])) continue;
+			j++;
 			estr += emotes[i]+":"+me->query_temp("pindao/id")+"* "+emotes[i]+ZJSEP;
 		}
 		write(estr+"\n");
