@@ -869,8 +869,7 @@ function charcheck() {
 function relogin()
 {
 	sock.emit('stream','quit\n');
-	delCookie('auto_login');
-	zjStore.removeItem('auto_login');
+	// single-player build: keep auto_login so reload logs straight back in
 	setTimeout(function(){ location.reload(); }, 800);
 };
 
