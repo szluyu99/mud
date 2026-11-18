@@ -230,6 +230,9 @@ private void setup()
 void in_server()
 {
 	int port;
+#if !efun_defined(socket_create)
+	return; // browser build: no sockets
+#endif
 
 	// 这里是版本发布站点，在该端口上监听分站的请求
 	// 创建版本通讯的SOCKET
@@ -840,6 +843,9 @@ private int connect_server()
 {
 	string addr, port;
 	int ret_val;
+#if !efun_defined(socket_create)
+	return 0; // browser build: no sockets
+#endif
 
 	// 创建版本通讯的SOCKET
 	vfd = socket_create(STREAM_BINARY,

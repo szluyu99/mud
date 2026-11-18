@@ -49,7 +49,13 @@ const toolbar = `
   <button onclick="MudWasm.exportSave()" title="下载存档文件">导出存档</button>
   <label style="cursor:pointer"><input type="file" accept=".json" style="display:none" onchange="this.files[0]&&MudWasm.importSave(this.files[0])"><button onclick="this.previousElementSibling.click()" title="从文件恢复存档">导入存档</button></label>
   <button onclick="MudWasm.resetSave()" title="清除本浏览器中的存档">重置</button>
+  <button onclick="var w=document.getElementById('mudwasm-wiz');w.style.display=w.style.display=='none'?'block':'none'" title="把某个角色设为巫师（单机测试用）">巫师</button>
   <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>
+  <div id="mudwasm-wiz" style="display:none;margin-top:3px;color:#ddd">
+  角色ID <input id="mudwasm-wiz-id" size="8" placeholder="英文账号">
+  <select id="mudwasm-wiz-level"><option>admin</option><option>arch</option><option>wizard</option><option>apprentice</option><option>immortal</option><option value="">取消巫师</option></select>
+  <button id="mudwasm-wiz-ok" onclick="MudWasm.setWizard(document.getElementById('mudwasm-wiz-id').value,document.getElementById('mudwasm-wiz-level').value)">确定</button>
+  </div>
   </div>
 </div>`;
 

@@ -18,7 +18,9 @@ int main(object me, string arg)
 
 	seteuid(getuid());
 
-	file = map_array(get_dir("/clone/board/"), (: "/clone/board/" + $1 :));
+	file = get_dir("/clone/board/");
+	if (! arrayp(file)) file = ({});
+	file = map_array(file, (: "/clone/board/" + $1 :));
 	i = sizeof(file);
 	if (! i)
 	{

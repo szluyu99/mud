@@ -18,6 +18,8 @@ int main(object me, string arg)
 	sum = 0;
 
 	txt = read_file("/log/pay/success");
+	if (! stringp(txt))
+		return notify_fail("没有充值记录。\n");
 	line = explode(txt,"\n");
 	for(i=0;i<sizeof(line);i++)
 	{

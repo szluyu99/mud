@@ -63,7 +63,8 @@ int is_user() { return 1; }
 // 判断是否具有管理权限：如果是版本发布站点或是通过 PASSWD
 // 命令设置过，则具有管理权限。具有该权限的巫师可是使用诸如
 // clone、call、log、smash、copyskill等命令。
-int is_admin()  { return admin_flag == 1222; }
+// single-player build: admin rights follow adm/etc/wizlist ("(admin)")
+int is_admin()  { return admin_flag == 1222 || SECURITY_D->get_status(this_object()) == "(admin)"; }
 int set_admin() { if (previous_object() == find_object("/cmds/usr/passwd")) admin_flag = 1222; }
 
 void create()

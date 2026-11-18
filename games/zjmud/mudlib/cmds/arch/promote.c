@@ -21,7 +21,9 @@ int main(object me, string arg)
 	if (! arg || sscanf(arg, "%s %s", arg, new_status) != 2)
 		return notify_fail("指令格式：promote <使用者> <等级>\n");
 
-	if (wiz_level(new_status) < 0)
+	// accept both "admin" and "(admin)"
+	if (new_status[0] != '(') new_status = "(" + new_status + ")";
+	if (member_array(new_status, SECURITY_D->query_wiz_levels()) < 0)
 		return notify_fail("没有这种等级。\n");
 
 	ob = UPDATE_D->global_find_player(arg);

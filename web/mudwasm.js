@@ -12,7 +12,7 @@
 (function () {
   'use strict';
   const MOUNT = '/mudlib';
-  const PERSIST = ['data'];
+  const PERSIST = ['data', 'adm/etc/wizlist']; // dirs or single files
   const SYNC_MS = 15000;
   const DEBUG = /[?&]debug\b/.test(location.search);
   const dbgDec = new TextDecoder();
@@ -80,7 +80,12 @@
         else files[r] = M.FS.readFile(p);
       }
     };
-    for (const d of PERSIST) walk(MOUNT + '/' + d, d);
+    for (const d of PERSIST) {
+      let st = null;
+      try { st = M.FS.stat(MOUNT + '/' + d); } catch (e) { continue; }
+      if (M.FS.isDir(st.mode)) walk(MOUNT + '/' + d, d);
+      else files[d] = M.FS.readFile(MOUNT + '/' + d);
+    }
     return files;
   }
   function restore(FS, files) {
@@ -140,7 +145,7 @@
             FS.writeFile(MOUNT + '/' + p, pkg.body.subarray(off, off + size));
             off += size;
           }
-          for (const d of PERSIST) mkdirp(FS, MOUNT + '/' + d);
+          mkdirp(FS, MOUNT + '/data');
           if (saved && saved.files) restore(FS, saved.files);
         }],
       });
@@ -269,5 +274,33 @@
     location.reload();
   }
 
-  window.MudWasm = { start, Socket, exportSave, importSave, resetSave, sync };
+  // Grant (or revoke) wizard rights for a character id by editing adm/etc/wizlist.
+  // Takes effect after the page reloads (the driver reads wizlist at boot).
+  async function setWizard(id, level) {
+    if (!M) { alert('游戏还没启动'); return; }
+    if (id === undefined) {
+      id = prompt('要设为巫师的角色 ID（英文账号）：');
+      if (!id) return;
+      level = prompt('巫师等级：admin / arch / wizard / apprentice / immortal，留空则取消巫师', 'admin');
+      if (level === null) return;
+    }
+    id = String(id || '').trim().toLowerCase();
+    level = String(level || '').trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_]*$/.test(id)) { alert('ID 只能是英文字母和数字'); return; }
+    if (level && !['admin', 'arch', 'wizard', 'apprentice', 'immortal'].includes(level)) { alert('等级不对：' + level); return; }
+    const path = MOUNT + '/adm/etc/wizlist';
+    let lines = [];
+    try { lines = new TextDecoder().decode(M.FS.readFile(path)).split('\n'); } catch (e) { /* none */ }
+    lines = lines.filter((l) => l.trim() && l.split(/\s+/)[0] !== id);
+    if (level) lines.push(id + ' (' + level + ')');
+    M.FS.writeFile(path, new TextEncoder().encode(lines.join('\n') + '\n'));
+    for (const s of sockets.values()) { try { M.ccall('fluffos_input', null, ['number', 'array', 'number'], [s.id, new TextEncoder().encode("save\n"), 5]); } catch (e) { /* ignore */ } }
+    await new Promise((r) => setTimeout(r, 800));
+    lastSig = 'x';
+    await sync();
+    alert(level ? id + ' 已设为巫师（' + level + '），页面将刷新后生效。' : id + ' 的巫师身份已取消，页面将刷新。');
+    location.reload();
+  }
+
+  window.MudWasm = { start, Socket, exportSave, importSave, resetSave, sync, setWizard };
 })();

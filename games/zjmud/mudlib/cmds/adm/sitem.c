@@ -1,6 +1,11 @@
 // updateall.c
 #include <ansi.h>
 
+// ZJGAMEPART was the server-merge suffix of the original site; empty in this build
+#ifndef ZJGAMEPART
+#define ZJGAMEPART ""
+#endif
+
 inherit F_CLEAN_UP;
 
 int update_dir(object me, string dir, int continueable, int *total);

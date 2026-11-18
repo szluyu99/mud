@@ -9,7 +9,7 @@ string process_bar(int n)
 	if (n < 0) n = 0; else
 	if (n > 100) n = 100;
 
-	sp = "						  " NOR;
+	sp = "                                                  " NOR;
 	if (n == 100)
 	{
 		sp[22] = '1';
