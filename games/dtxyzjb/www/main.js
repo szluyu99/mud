@@ -1176,6 +1176,17 @@ function adjustLayout() {
 $(window).resize(adjustLayout);
 
 $(document).ready(function(){
+	// tap the grey backdrop to close the top dialog (after login only; keep half-typed input)
+	$(document).on('click touchend', '.ui-widget-overlay', function(e){
+		if(!loginok) return;
+		var dlg = $('.ui-dialog:visible').last();
+		if(!dlg.length) return;
+		var typed = false;
+		dlg.find('textarea,input[type=text]').each(function(){ if($.trim($(this).val())!='') typed = true; });
+		if(typed) return;
+		e.preventDefault();
+		dlg.find('.ui-dialog-content').dialog('close');
+	});
 	document.title = titled;
 	longob.hide();
 	hudongob.hide();
