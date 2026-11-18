@@ -869,7 +869,8 @@ function charcheck() {
 function relogin()
 {
 	sock.emit('stream','quit\n');
-	// single-player build: keep auto_login so reload logs straight back in
+	delCookie('auto_login');
+	zjStore.removeItem('auto_login'); // back to the login box; id/password stay filled in
 	setTimeout(function(){ location.reload(); }, 800);
 };
 
