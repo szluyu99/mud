@@ -4,6 +4,15 @@ var loginok = false;
 var textcol = '#ddd'; pd_on = 'chat';
 var dirnw='　',dirn='　',dirne='　',dirw='　',dire='　',dirsw='　',dirso='　',dirse='　',tit = '指文游', titled = tit + '－' + '本地单机';
 var scrw = $(window).width(), scrh = $(window).height();
+// 手机浏览器里视口大小会变：横竖屏切换、地址栏收起、软键盘弹出。
+// 只在这里读一次会让布局停在打开页面时的尺寸，所以每次重排前都重新取一次。
+function refreshViewport() {
+	scrw = $(window).width();
+	scrh = $(window).height();
+	if (window.visualViewport) {
+		scrh = Math.round(Math.min(scrh, window.visualViewport.height));
+	}
+}
 var dialog_title = "",strsss = "";
 var ansi_flag = false;
 var chatob = $('div#chat');
@@ -122,6 +131,7 @@ function cmdsa(str) {
 
 function cmdsb() {
 	if($('textarea#chatmsg').val()=='') return; 
+	pushCmdHistory($('textarea#chatmsg').val());
 	sock.emit('stream',$('textarea#chatmsg').val()+'\n');
 	hudongob.dialog("close");
 	document.getElementById("chatmsg").value="";
@@ -142,6 +152,7 @@ function cmdsc(str) {
 
 function says(str) {
 	if($('textarea#chatmsg').val()=='') return;
+	pushCmdHistory($('textarea#chatmsg').val());
 	sock.emit('stream',str.id.replace('$txt#',$('textarea#chatmsg').val())+'\n');
 	hudongob.dialog("close");
 	document.getElementById("chatmsg").value="";
@@ -625,7 +636,7 @@ function setBT(sn)
 {
 	writeToHD('请输入你要对【按钮'+sn+'】的定义：\n[ 按钮名字,要执行的指令 ]\n');
 	mycmdsob.hide();
-	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:95%;height:22px;font-size:15px;padding:6px" id="chatmsg"></textarea>');
+	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:95%;height:22px;font-size:16px;padding:6px" id="chatmsg"></textarea>');
 	if(zjStore.getItem('mybt'+sn))
 		$('textarea#chatmsg').val(zjStore.getItem('mybt'+sn));
 	hudongob.append('<br><button style="color:'+textcol+';width:'+(97/3)+'%;height:'+(scrh/18+5)+'px;" onclick="setBTOK('+sn+')">确定</button>');
@@ -676,15 +687,25 @@ function writeToScreen(str) {
 	//str = str.replace(/\【/, '[ ');
 	//str = str.replace(/\】/, ' ]');
 	str = ansistr(str);
+	// 手机上屏幕小、一屏放不下几行，往上翻看战斗记录时新消息会把视图拽回底部。
+	// 只有本来就在底部（或快到底部）时才自动跟随。
+	var follow = isScrolledToBottom(outob);
 	outob.append('<span class="out">' + str + '</span>');
 	var node = document.getElementById("out"); 
 	if(node.hasChildNodes())
 	{
+		// 保留更多行：手机一屏就十几行，50 条翻两下就没了。
 		var childList = node.childNodes;
-		if(childList.length>50)
-			node.removeChild(childList[0]);
+		while (childList.length > 400) node.removeChild(childList[0]);
 	}
-	outob.scrollTop(outob.prop("scrollHeight"));
+	if (follow) outob.scrollTop(outob.prop("scrollHeight"));
+};
+
+// 是否已经贴在底部（留 40px 容差，避免亚像素误差导致永远判定为“不在底部”）
+function isScrolledToBottom(ob) {
+	if (!ob || !ob.length) return true;
+	var el = ob[0];
+	return el.scrollHeight - el.scrollTop - el.clientHeight < 40;
 };
 
 function writelogin() {
@@ -1002,18 +1023,68 @@ function writeInput(line) {
 	var ss = line.split("$zj#");
 	ss[0] = ss[0].replace("$br#",'\n');
 	writeToHD(ss[0]);
-	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:96%;height:22px;font-size:15px;padding:6px" id="chatmsg"></textarea>');
+	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:96%;height:22px;font-size:16px;padding:6px" id="chatmsg"></textarea>');
 	/*
 	if(dialog_title=='指令')
 		hudongob.append('<button style="color:'+textcol+';width:'+(96/4)+'%;height:'+(scrh/18+6)+'px;" id="'+ss[1]+'" onclick="cmdsb()">确定</button>');
 	else*/
 		hudongob.append('<br><button style="color:'+textcol+';width:'+(96/4)+'%;height:'+(scrh/18+6)+'px;" id="'+ss[1]+'" onclick="says(this)">确定</button>');
 }
+// 手机上没有回车键，但外接键盘、iPad、以及部分输入法的“换行/前往”键都会触发 Enter。
+// 直接发送，省掉再点“执行”一次。Shift+Enter 留给换行。
+// 对话框里的确定按钮决定走哪条路（says 带 $txt# 前缀，cmdsb 是普通指令），
+// 所以直接找到那个按钮并调用它自己的 onclick，不重复实现发送逻辑。
+function submitCommandBox() {
+	var btn = $('#hudong button').filter(function () {
+		var oc = this.getAttribute('onclick') || '';
+		return oc.indexOf('says(') >= 0 || oc.indexOf('cmdsb(') >= 0;
+	}).get(0);
+	if (btn) { btn.onclick(); return true; }
+	if (typeof cmdsb === 'function') { cmdsb(); return true; }
+	return false;
+}
+
+$(document).on('keydown', 'textarea#chatmsg', function (e) {
+	if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+	e.preventDefault();
+	submitCommandBox();
+});
+
+// 指令历史：手机输入慢，重复的指令（look、score、hp…）不该每次手打。
+// 上下方向键在物理键盘上翻历史。
+var cmdHistory = [], cmdHistIdx = -1;
+function pushCmdHistory(v) {
+	v = String(v || '').trim();
+	if (!v) return;
+	if (cmdHistory[cmdHistory.length - 1] === v) { cmdHistIdx = -1; return; }
+	cmdHistory.push(v);
+	if (cmdHistory.length > 60) cmdHistory.shift();
+	cmdHistIdx = -1;
+	try { zjStore.setItem('cmdhist', JSON.stringify(cmdHistory)); } catch (e) {}
+}
+try {
+	var saved = zjStore.getItem('cmdhist');
+	if (saved) cmdHistory = JSON.parse(saved) || [];
+} catch (e) { cmdHistory = []; }
+
+$(document).on('keydown', 'textarea#chatmsg', function (e) {
+	if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+	if (!cmdHistory.length) return;
+	e.preventDefault();
+	if (e.key === 'ArrowUp') {
+		if (cmdHistIdx < 0) cmdHistIdx = cmdHistory.length - 1; else if (cmdHistIdx > 0) cmdHistIdx--;
+	} else {
+		if (cmdHistIdx >= 0 && cmdHistIdx < cmdHistory.length - 1) cmdHistIdx++;
+		else { cmdHistIdx = -1; $(this).val(''); return; }
+	}
+	$(this).val(cmdHistory[cmdHistIdx]);
+});
+
 function writecmd() {
 	dialog_title = "执行指令";
 	writeToHD('请输入指令：');
 
-	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:96%;height:22px;font-size:15px;padding:6px" id="chatmsg" ></textarea>');
+	hudongob.append('<textarea style="background-color:rgba(200,200,200,0.1);color:'+textcol+';width:96%;height:22px;font-size:16px;padding:6px" id="chatmsg" ></textarea>');
 	hudongob.append('<button style="color:'+textcol+';width:'+(96/4)+'%;height:'+(scrh/18+6)+'px;" id="chatmsg" onclick="cmdsb()" value="执行指令">执行</button>');
 }
 
@@ -1167,7 +1238,7 @@ function writeServerData(buf) {
 function adjustLayout() {
 	if(!loginok) return;
 
-//	scrh = $(window).height();
+	refreshViewport();
 	leftob.height(scrh-(96+chat_height)-longob.height()-hpsob.height()-tbarob.height());
 	rightob.height(scrh-(96+chat_height)-longob.height()-hpsob.height()-tbarob.height());
 	outob.height(scrh-(196+chat_height)-longob.height()-hpsob.height()-tbarob.height());
@@ -1175,7 +1246,22 @@ function adjustLayout() {
 	mycmdsob.css("bottom",42+hpsob.height());
 };
 
-$(window).resize(adjustLayout);
+// 横竖屏切换、地址栏伸缩时窗口尺寸会变；手机上软键盘弹出时 visualViewport 也会变。
+// 用短延时合并连续触发，避免拖动窗口时每一帧都重排。
+var relayoutTimer = null;
+function scheduleRelayout() {
+	if (relayoutTimer) clearTimeout(relayoutTimer);
+	relayoutTimer = setTimeout(function () {
+		relayoutTimer = null;
+		adjustLayout();
+	}, 120);
+}
+
+$(window).resize(scheduleRelayout);
+$(window).on('orientationchange', scheduleRelayout);
+if (window.visualViewport) {
+	window.visualViewport.addEventListener('resize', scheduleRelayout);
+}
 
 $(document).ready(function(){
 	// tap the grey backdrop to close the top dialog (after login only; keep half-typed input)
