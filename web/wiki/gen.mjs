@@ -6,6 +6,7 @@
 //   import { genWiki } from './wiki/gen.mjs';
 //   const data = await genWiki({ driverDir, mudlibDir, config: 'config.zj' });
 import fs from 'node:fs';
+import { recruitInfo } from './recruit.mjs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -104,7 +105,7 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
     const f = norm(r.f);
     const ex = {};
     for (const [d, to] of Object.entries(r.e || {})) ex[d] = norm(to);
-    rooms[f] = { s: plain(r.s), e: ex, n: Object.keys(r.n || {}).map(norm), nf: r.nf ? 1 : 0 };
+    rooms[f] = { s: plain(r.s), e: ex, n: Object.keys(r.n || {}).map(norm), nf: r.nf ? 1 : 0, o: r.o ? 1 : 0 };
   }
   // where each npc / item stands
   const npcAt = {}, itemAt = {};
@@ -184,6 +185,13 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
   }
   for (const s of Object.values(skills)) s.teach.sort((a, b) => b[1] - a[1]);
   for (const [f, it] of Object.entries(items)) if (it.book && skills[it.book.s]) skills[it.book.s].books.push(f);
+
+  // 拜师条件（静态解析源码）
+  const skName = (k) => (skills[k] && skills[k].name) || k;
+  for (const [nf, n] of Object.entries(npcs)) if (n.teach) {
+    const rc = recruitInfo(mudlibDir, nf, skName);
+    if (rc && (rc.req.length || rc.said.length || rc.daily)) n.rc = rc;
+  }
 
   // families
   const fams = {};

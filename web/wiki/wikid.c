@@ -158,9 +158,11 @@ void do_room(string f)
 	mapping m = ([]), ex, objs;
 	string *ks;
 	int i;
-	if (find_object(f)) return;
-	if (catch(ob = load_object(f)) || ! ob) return;
-	if (! stringp(ob->query("short"))) { destruct(ob); return; }
+	int keep = 0;
+	// 开机就加载好的房间（出生的客栈等）照样读，但不销毁
+	if (ob = find_object(f)) keep = 1;
+	else if (catch(ob = load_object(f)) || ! ob) return;
+	if (! stringp(ob->query("short"))) { if (! keep) destruct(ob); return; }
 	m["f"] = f;
 	m["s"] = ob->query("short");
 	m["o"] = ob->query("outdoors");
@@ -181,6 +183,7 @@ void do_room(string f)
 	if (ob->query("no_fight")) m["nf"] = 1;
 	if (ob->query("sleep_room")) m["sl"] = 1;
 	emit(js(m));
+	if (keep) return;
 	foreach (object o in deep_inventory(ob)) if (o && ! userp(o)) destruct(o);
 	destruct(ob);
 }

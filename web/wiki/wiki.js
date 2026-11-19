@@ -72,7 +72,7 @@
     const txt = r.go.steps.map((d) => DIRS[d] || d).join(' → ');
     return '<div class="go">先 <code>fly ' + esc(r.go.fly) + '</code>（' + esc(roomLabel((D.fly.find((p) => p.key === r.go.fly) || {}).room || '')) + '）' +
       (r.go.steps.length ? '，再走 ' + r.go.steps.length + ' 步：<br><code>' + esc(txt) + '</code>' : '，就在落脚点。') +
-      '<br><button data-copy="' + esc(cmds.join(';')) + '">复制指令</button></div>';
+      '<br><button data-file="' + esc(f) + '" data-go="' + esc(cmds.join(';')) + '">带我去</button> <button data-copy="' + esc(cmds.join(';')) + '">复制指令</button></div>';
   }
   function showWhere(fs) {
     if (!fs.length) return '';
@@ -138,6 +138,19 @@
     return chips(opts, f, '#/npcs') + '<div class="muted">按经验从高到低</div>' + listPage(es, '#/npcs' + (f ? '?f=' + f : ''), page, ([k, n]) =>
       row('#/npc/' + enc(k), n.name + (n.nick ? '「' + n.nick + '」' : ''), n.fam ? n.fam.n : '', n.at[0] ? roomLabel(n.at[0]) : n.title));
   }
+  function recruitBox(n) {
+    const rc = n.rc || { req: [], said: [], daily: 0 };
+    const li = rc.req.map((r) => {
+      let t = esc(r.t);
+      if (r.s && D.skills[r.s]) { const nm = esc(D.skills[r.s].name); t = t.replace(nm, skLink(r.s)); }
+      return '<li>' + t + '</li>';
+    });
+    if (rc.daily) li.push('<li>每天收徒有名额，满了要第二天再来</li>');
+    li.push('<li class="muted">通用：没有拜过别的门派、没有叛过师</li>');
+    return '<ul class="rc">' + li.join('') + '</ul>' +
+      (!rc.req.length ? '<div class="muted">源码里没有读出具体的属性要求' + (rc.said.length ? '，下面是师父拒绝时说的话' : '') + '。</div>' : '') +
+      (rc.said.length ? '<div class="said">' + rc.said.map((s) => '<div>「' + esc(s) + '」</div>').join('') + '</div>' : '');
+  }
   function npc(f) {
     const n = D.npcs[f];
     if (!n) return notFound();
@@ -147,6 +160,7 @@
       kv([['门派', n.fam ? link('fam', n.fam.n, n.fam.n) + ' 第 ' + n.fam.g + ' 代' + (n.fam.t ? ' ' + esc(n.fam.t) : '') : ''],
         ['收徒', n.teach && n.fam ? '可以拜师（apprentice ' + esc(n.id) + '）' : ''], ['性别', esc(n.gender)], ['年龄', n.age],
         ['经验', n.exp.toLocaleString()], ['气血', n.qi], ['内力', n.neili], ['神', shen]]) +
+      (n.teach && n.fam ? section('拜师条件', recruitBox(n)) : '') +
       (n.long ? '<h3>描述</h3><div class="long">' + esc(n.long) + '</div>' : '') +
       section('在哪', showWhere(n.at)) +
       section('武功', skillTable(n.sk, n.map)) +
@@ -255,7 +269,12 @@
       case 'room': html = room(key); break;
       case 'fams': html = famsPage(); break;
       case 'fam': html = fam(key); break;
-      case 'search': html = searchPage(key, page); if ($('#q').value !== key) $('#q').value = key; break;
+      case 'search': {
+        // 名字正好对上唯一一条（游戏里点「查百科」时常见）：直接打开那一页
+        const exact = search(key).filter((e) => e[2] === key.trim());
+        if (exact.length === 1 && !page) { location.replace('#/' + exact[0][0] + '/' + enc(exact[0][1])); return; }
+      }
+        html = searchPage(key, page); if ($('#q').value !== key) $('#q').value = key; break;
       default: html = home();
     }
     const tab = TABS[kind] !== undefined ? kind : TAB_OF[kind] || (kind === 'search' ? 'x' : '');
@@ -263,6 +282,30 @@
     main.innerHTML = html;
     if (!page) window.scrollTo(0, 0);
     document.title = (D.title || '') + ' 百科';
+  }
+
+  // 「带我去」：把路线交给游戏去走。
+  // 在游戏里打开的百科（嵌在游戏页面里）直接交给外层页面；单独打开的百科，通过同源的
+  // BroadcastChannel 交给已经开着的游戏页面；游戏没开着就退回到复制指令。
+  const EMBED = /[?&]embed=1\b/.test(location.search);
+  function sendGo(b) {
+    const cmds = b.dataset.go.split(';'), file = b.dataset.file || '';
+    const say = (t) => { b.textContent = t; setTimeout(() => { b.textContent = '带我去'; }, 3000); };
+    if (EMBED && window.parent !== window) { window.parent.postMessage({ type: 'wiki-go', cmds, file }, location.origin); return; }
+    let ch = null;
+    try { ch = new BroadcastChannel('mudwasm-' + game); } catch (e) { /* old browser */ }
+    const fallback = () => {
+      const txt = cmds.join(';');
+      const done = () => say('游戏没打开，已复制指令');
+      if (navigator.clipboard) navigator.clipboard.writeText(txt).then(done, () => prompt('游戏没打开，复制下面的指令到游戏里发送', txt));
+      else prompt('游戏没打开，复制下面的指令到游戏里发送', txt);
+    };
+    if (!ch) { fallback(); return; }
+    const id = Math.random().toString(36).slice(2);
+    let acked = false;
+    ch.onmessage = (e) => { if (e.data && e.data.type === 'wiki-go-ack' && e.data.id === id) { acked = true; say('已交给游戏，切到游戏页面看'); ch.close(); } };
+    ch.postMessage({ type: 'wiki-go', cmds, file, id });
+    setTimeout(() => { if (!acked) { ch.close(); fallback(); } }, 700);
   }
 
   function setup() {
@@ -279,7 +322,10 @@
       const v = e.target.value.trim();
       t = setTimeout(() => { location.hash = v ? '#/search/' + enc(v) : '#/'; }, 250);
     });
+    if (EMBED) document.body.classList.add('embed');
     main.addEventListener('click', (e) => {
+      const g = e.target.closest('button[data-go]');
+      if (g) { sendGo(g); return; }
       const b = e.target.closest('button[data-copy]');
       if (!b) return;
       const txt = b.dataset.copy;

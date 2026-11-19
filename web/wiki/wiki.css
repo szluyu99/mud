@@ -43,3 +43,8 @@ td.n { text-align: right; color: #aaa; white-space: nowrap; }
 .cards a { display: block; padding: 12px; border: 1px solid #2c2c2c; border-radius: 8px; background: #181818; color: inherit; }
 .cards a b { display: block; color: #9cf; font-size: 16px; }
 .cards a span { color: #888; font-size: 13px; }
+ul.rc { margin: 4px 0 6px; padding-left: 20px; }
+ul.rc li { margin: 2px 0; }
+.said { color: #b9a77a; margin-top: 4px; }
+.said div { margin: 2px 0; }
+body.embed #play, body.embed #game { display: none !important; }

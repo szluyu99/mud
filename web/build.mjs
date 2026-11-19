@@ -121,7 +121,7 @@ function patchZjmud(dir, g) {
   html = html.replace('<script src="main.js" ></script>', '<script src="main.js" ></script>\n  <script src="../minimap.js"></script>');
   html = addPwaHead(html, g);
   if (g.wiki) html = html.replace('<a href="../" style="color:#9cf;margin-left:4px">换游戏</a>',
-    '<a href="../wiki/?g=' + g.id + '" style="color:#9cf;margin-left:4px">百科</a> <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>');
+    '<a href="../wiki/?g=' + g.id + '" onclick="return !(window.MudMiniMap && MudMiniMap.wiki && MudMiniMap.wiki(\'\'))" style="color:#9cf;margin-left:4px">百科</a> <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>');
   fs.writeFileSync(fi, html);
 }
 

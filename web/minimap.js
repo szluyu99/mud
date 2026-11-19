@@ -38,6 +38,139 @@
     return null;
   };
 
+  const GAME_ID = (location.pathname.match(/([^/]+)\/(?:index\.html)?$/) || [])[1] || '';
+
+  // ---------- 百科地图：游戏百科（../wiki/<游戏>.json）里有全部房间和出口 ----------
+  // 认出自己在百科里的哪个房间（房间名 + 出口方向；同名的靠上一个房间和走的方向区分），
+  // 就能把没去过的房间也画出来，点哪里都能走：连得上就一步步走，连不上就先 fly 再走。
+  let W = null, wTried = false, wCur = null, wMode = false, wLast = null, wLastAt = 0;
+  const dirKey = (e) => Object.keys(e || {}).filter((d) => D[d]).sort().join(',');
+  function wLoad() {
+    if (W || wTried || !GAME_ID) return;
+    wTried = true;
+    fetch('../wiki/' + encodeURIComponent(GAME_ID) + '.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !j.rooms) return;
+      const byT = {};
+      for (const f in j.rooms) (byT[j.rooms[f].s] ||= []).push(f);
+      const names = new Set();
+      for (const k in j.npcs || {}) names.add(j.npcs[k].name);
+      for (const k in j.items || {}) names.add(j.items[k].name);
+      W = { rooms: j.rooms, byT, fly: j.fly || [], names };
+      wLocate();
+      if (panel) render();
+    }).catch(() => { /* no wiki for this game, or offline and not cached */ });
+  }
+  function wLocate() {
+    if (!W || !roomTitle) return;
+    const all = W.byT[roomTitle] || [], want = dirKey(roomExits);
+    let cands = all.filter((f) => dirKey(W.rooms[f].e) === want);
+    if (!cands.length) cands = all;              // 出口和百科对不上（门关着之类），只按名字
+    const was = wCur && W.rooms[wCur];
+    let f = null;
+    if (was && wLast && Date.now() - wLastAt < 8000 && cands.includes(was.e[wLast])) f = was.e[wLast];
+    if (!f && wCur && cands.includes(wCur)) f = wCur;
+    if (!f && was) { const t = Object.values(was.e).filter((x) => cands.includes(x)); if (t.length === 1) f = t[0]; }
+    if (!f && wLast && /^fly\s/.test(wLast)) { const p = W.fly.find((x) => 'fly ' + x.key === wLast); if (p && cands.includes(p.room)) f = p.room; }
+    if (!f && cands.length === 1) f = cands[0];
+    if (!f && wCur && cands.length > 1) {
+      const reg = wCur.split('/')[2], same = cands.filter((x) => x.split('/')[2] === reg);
+      if (same.length === 1) f = same[0];
+    }
+    wCur = f;
+  }
+  // 百科图里从 from 到 to 的最短出口序列
+  function wPath(from, to) {
+    if (!W || !from || from === to) return from === to ? [] : null;
+    const back = { [from]: null }, q = [from];
+    for (let h = 0; h < q.length && q.length < 6000; h++) {
+      const r = W.rooms[q[h]];
+      if (!r) continue;
+      for (const d in r.e) {
+        const t = r.e[d];
+        if (t in back || !W.rooms[t]) continue;
+        back[t] = [q[h], d];
+        if (t === to) { const p = []; for (let k = to; back[k]; k = back[k][0]) p.unshift(back[k][1]); return p; }
+        q.push(t);
+      }
+    }
+    return null;
+  }
+  // 最近的室外房间（fly 只能在室外用）
+  function wOutdoor(from) {
+    if (!from || !W.rooms[from]) return null;
+    if (W.rooms[from].o) return [];
+    const back = { [from]: null }, q = [from];
+    for (let h = 0; h < q.length && h < 400; h++) {
+      const r = W.rooms[q[h]];
+      for (const d in r.e) {
+        const t = r.e[d];
+        if (t in back || !W.rooms[t]) continue;
+        back[t] = [q[h], d];
+        if (W.rooms[t].o) { const p = []; for (let k = t; back[k]; k = back[k][0]) p.unshift(back[k][1]); return p; }
+        q.push(t);
+      }
+    }
+    return null;
+  }
+  function wPlan(to) {
+    const r = W.rooms[to];
+    if (!r) return null;
+    let p = wPath(wCur, to);
+    if (p && r.go && p.length > r.go.steps.length + 12) p = null;   // 远：先 fly 更快
+    if (!p && r.go) {
+      const out = wCur ? wOutdoor(wCur) : [];
+      p = (out || []).concat(['fly ' + r.go.fly], r.go.steps);
+    }
+    return p;
+  }
+  function wWalk(to) {
+    const r = W.rooms[to];
+    if (!r) return;
+    stopRoute(null);
+    const p = wPlan(to);
+    if (!p) { flash('去不了「' + r.s + '」：百科里没有找到路。'); return; }
+    if (!p.length) return;
+    runQueue(p);
+    queue.wTarget = to;
+    const fi = p.findIndex((c) => /^fly /.test(c));
+    flash('去「' + r.s + '」：' + (fi < 0 ? p.length + ' 步' : (fi ? '先走 ' + fi + ' 步到室外，' : '') + p[fi] + ' 再走 ' + (p.length - fi - 1) + ' 步') + '。');
+  }
+  // 以当前房间为中心摆坐标（只看平面方向；上下楼、进出门摆在旁边空格）
+  function wLayout(center, limit) {
+    const pos = { [center]: [0, 0] }, used = { '0,0': center }, edges = [], q = [center];
+    const free = (x, y) => {
+      if (!used[x + ',' + y]) return [x, y];
+      for (let r = 1; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === r && !used[(x + dx) + ',' + (y + dy)]) return [x + dx, y + dy];
+      }
+      return null;
+    };
+    for (let h = 0; h < q.length && q.length < limit; h++) {
+      const f = q[h], r = W.rooms[f], [x, y] = pos[f];
+      if (!r) continue;
+      for (const d of Object.keys(r.e).sort((a, b) => (D[b] && !D[b][2] ? 1 : 0) - (D[a] && !D[a][2] ? 1 : 0))) {
+        const t = r.e[d];
+        if (!W.rooms[t]) continue;
+        if (t in pos) { edges.push([f, t]); continue; }
+        const v = D[d] || [0, 0, 0];
+        const sp = free(x + v[0], y + v[1] + (v[0] || v[1] ? 0 : 1));
+        if (!sp) continue;
+        pos[t] = sp; used[sp[0] + ',' + sp[1]] = t; edges.push([f, t]); q.push(t);
+      }
+    }
+    return { pos, edges };
+  }
+  const WV = 'minimap_wv';
+  let wSeen = new Set();
+  try { wSeen = new Set(JSON.parse((window.zjStore && zjStore.getItem(WV)) || '[]')); } catch (e) { /* none */ }
+  let wSeenTimer = 0;
+  function markSeen(f) {
+    if (!f || wSeen.has(f)) return;
+    wSeen.add(f);
+    clearTimeout(wSeenTimer);
+    wSeenTimer = setTimeout(() => { try { zjStore.setItem(WV, JSON.stringify([...wSeen])); } catch (e) { /* full */ } }, 1000);
+  }
+
   // ---------- state ----------
   const KEY = 'minimap';
   const MAX_CELLS = 4000;
@@ -82,6 +215,7 @@
     if (c.startsWith('go ')) c = c.slice(3).trim();
     c = ABBR[c] || c;
     if (D[c]) { lastDir = c; lastDirAt = Date.now(); }
+    wLast = c; wLastAt = Date.now();
   }
 
   function sameExits(a, b) {
@@ -190,6 +324,7 @@
         put(seg, x, y, z);
       } else put(newSeg(), 0, 0, 0);
     }
+    wLocate();
     lastDir = null;
     save();
     routeArrived();
@@ -231,6 +366,8 @@
     const origEmit = sock.emit;
     sock.emit = function (ev, data) {
       if (ev === 'stream' && !autoSending) {
+        const wq = String(data).trim().match(/^(?:wiki|百科)(?:\s+(.*))?$/i);
+        if (wq && W) { openWiki(wq[1] || ''); return; }
         const parts = String(data).split(/[;；]/).map((x) => x.trim()).filter(Boolean);
         if (route) stopRoute('你自己输入了指令，自动走路已停止。');
         if (queue) stopQueue(null);
@@ -338,6 +475,7 @@
     queue.fly = /^fly\s/.test(c);
     queue.move = !queue.fly && (!!roomExits[c] || !!D[c] || /^go\s/.test(c));
     sendAuto(c);
+    if (panel && wMode) render();
     if (queue.fly) queue.timer = setTimeout(() => stopQueue('飞了 15 秒还没落地，后面的指令不发了。'), 15000);
     else if (queue.move) queue.timer = setTimeout(() => stopQueue('「' + c + '」走了 5 秒还没到，后面的指令不发了。'), 5000);
     else queue.timer = setTimeout(() => { if (!queue) return; queue.cmds.shift(); qNext(); }, 800);
@@ -419,7 +557,8 @@
     cw = ncw; saveZoom(); render();
   }
   function fitAll() {
-    const cur = S.cur, g = cur && S.segs[cur.seg];
+    const cur = wMode ? { x: 0, y: 0, z: 0 } : S.cur;
+    const g = wMode ? (wLayoutCache ? Object.fromEntries(Object.values(wLayoutCache.pos).map(([x, y]) => [x + ',' + y + ',0', 1])) : null) : cur && S.segs[cur.seg];
     if (!g) return;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const key in g) {
@@ -510,7 +649,9 @@
     panel.textContent = '';
 
     const cur = S.cur, here = curCell();
-    const ck = cur ? cur.seg + ':' + k3(cur.x, cur.y, cur.z) : null;
+    wLoad();
+    if (wCur) markSeen(wCur);
+    const ck = wMode ? 'w:' + wCur : cur ? cur.seg + ':' + k3(cur.x, cur.y, cur.z) : null;
     if (ck !== followKey) { followKey = ck; panX = panY = 0; }
 
     const head = el('div', 'position:absolute;left:6px;top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ddd',
@@ -524,6 +665,7 @@
       btns.push(b);
     };
     if (panX || panY) btn('定位', 'center', () => { panX = panY = 0; render(); });
+    if (W) btn(wMode ? '我的图' : '百科图', 'wiki', () => { wMode = !wMode; panX = panY = 0; render(); });
     btn('全图', 'fit', fitAll);
     btn('－', 'zoomout', () => zoomAt(1 / 1.3, vpW / 2, vpH / 2), cw <= CW_MIN);
     btn('＋', 'zoomin', () => zoomAt(1.3, vpW / 2, vpH / 2), cw >= CW_MAX);
@@ -534,7 +676,12 @@
     panel.append(head, bar);
 
     const foot = el('div', 'position:absolute;left:6px;right:6px;bottom:5px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis');
-    if (!cur || !here) {
+    if (wMode && !wCur) {
+      foot.textContent = '百科里没认出你在哪个房间（同名的房间太多），走一步再看。';
+      panel.append(foot);
+      return;
+    }
+    if (!wMode && (!cur || !here)) {
       foot.textContent = '还没有记录，走几步就会显示。';
       panel.append(foot);
       return;
@@ -556,7 +703,7 @@
     // 多画一圈视口外的，拖动时边上不至于一片空白
     const vis = (dx, dy) => { const x = sx(dx), y = sy(dy); return x > -vpW && x < vpW * 2 && y > -vpH && y < vpH * 2; };
     const fs = cw >= 40 ? 10 : cw >= 26 ? 9 : cw >= 18 ? 8 : 0;
-    const seg = S.segs[cur.seg] || {};
+    const seg = (!wMode && S.segs[cur.seg]) || {};
 
     const line = (x1, y1, x2, y2, dim) => {
       const len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
@@ -567,10 +714,10 @@
     const shown = [];
     for (const key in seg) {
       const [x, y, z] = key.split(',').map(Number);
-      if (z !== cur.z || !vis(x - cur.x, y - cur.y)) continue;
+      if (wMode || z !== cur.z || !vis(x - cur.x, y - cur.y)) continue;
       shown.push([key, x - cur.x, y - cur.y, seg[key]]);
     }
-    for (const [key, dx, dy, c] of shown) {
+    for (const [key, dx, dy, c] of (wMode ? [] : shown)) {
       for (const d in c.e) {
         const v = D[d];
         if (!v || v[2] !== 0) continue;
@@ -594,7 +741,7 @@
       b.title = text;
       b.dataset.mm = 'cell'; b.dataset.ij = dx + ',' + dy;
       if (dir) b.addEventListener('click', (e) => { e.stopPropagation(); go(dir); });
-      else if (far) b.addEventListener('click', (e) => { e.stopPropagation(); startRoute(far); });
+      else if (far) b.addEventListener('click', (e) => { e.stopPropagation(); if (typeof far === 'string') wWalk(far); else startRoute(far); });
       layer.append(b);
       if (badge && cw >= 22) {
         const s = el('div', 'position:absolute;font-size:9px;line-height:9px;color:#fc6;pointer-events:none', badge);
@@ -602,6 +749,7 @@
         layer.append(s);
       }
     };
+    if (wMode) { renderWiki(layer, line, box, sx, sy, vis, foot); panel.append(foot); return; }
     // 当前房间能直接走到的格子
     const near = {};
     for (const d in here.e) {
@@ -656,8 +804,102 @@
     panel.append(foot);
   }
 
+  function renderWiki(layer, line, box, sx, sy, vis, foot) {
+    const L = wLayout(wCur, 900), here = W.rooms[wCur];
+    wLayoutCache = L;
+    for (const [a, b] of L.edges) {
+      const p = L.pos[a], q = L.pos[b];
+      if (vis(p[0], p[1]) || vis(q[0], q[1])) line(sx(p[0]), sy(p[1]), sx(q[0]), sy(q[1]), !(wSeen.has(a) && wSeen.has(b)));
+    }
+    const near = {};
+    for (const d in here.e) near[here.e[d]] = d;
+    const tgt = queue && queue.wTarget;
+    for (const f in L.pos) {
+      if (f === wCur) continue;
+      const [x, y] = L.pos[f];
+      if (!vis(x, y)) continue;
+      const r = W.rooms[f], d = near[f];
+      box(x, y, r.s, f === tgt ? 'target' : d ? 'near' : wSeen.has(f) ? 'seen' : 'ghost', d && D[d] ? d : null, '', d && D[d] ? null : f);
+    }
+    box(0, 0, here.s, 'here', null, '');
+    if (queue) {
+      foot.textContent = '';
+      foot.style.color = '#fc6';
+      foot.append('按百科路线走，还剩 ' + queue.cmds.length + ' 条指令　');
+      const st = el('span', 'display:inline-block;color:#9cf;cursor:pointer;padding:0 6px', '停止');
+      st.dataset.mm = 'stop';
+      st.addEventListener('click', (e) => { e.stopPropagation(); stopQueue('已停止。'); render(); });
+      foot.append(st);
+    } else if (flashMsg && Date.now() - flashAt < 6000) {
+      foot.textContent = flashMsg; foot.style.color = '#fc6';
+      setTimeout(() => { if (panel && Date.now() - flashAt >= 6000) render(); }, 6100 - (Date.now() - flashAt));
+    } else foot.textContent = '百科图：实线框是去过的，虚线框没去过。点哪里就走过去，远的先 fly。';
+  }
+  let wLayoutCache = null;
+
   function toggle() { if (panel) close(); else render(); }
   window.MudMiniMap = { toggle, close, walkTo: startRoute, stop: () => stopRoute(null), state: () => ({ cur: S.cur, route, cw, panX, panY }), findPath, reset: () => { S = { segs: {}, next: 1, cur: null }; save(); if (panel) render(); } };
+
+  // 百科「带我去」：百科页面把路线（fly xx;north;…）交过来，按连续指令走。
+  // 百科嵌在游戏页面里时用 postMessage；单独开的百科用同源 BroadcastChannel，收到后回执。
+  function takeRoute(d) {
+    if (!d || d.type !== 'wiki-go' || !Array.isArray(d.cmds)) return false;
+    const cmds = d.cmds.map((c) => String(c).trim()).filter(Boolean).slice(0, 200);
+    if (!cmds.length) return false;
+    stopRoute(null);
+    closeWiki();
+    // 游戏这边知道自己在哪：按百科地图重新规划（近的直接走，在室内先走到室外再 fly）
+    const plan = d.file && W && W.rooms[d.file] && wPlan(d.file);
+    if (plan) { if (!plan.length) { note('已经在这里了。'); return true; } wWalk(d.file); note('按百科路线走：' + plan.length + ' 条指令。'); return true; }
+    runQueue(cmds);
+    note('按百科路线走：' + cmds.length + ' 条指令。');
+    return true;
+  }
+  window.addEventListener('message', (e) => { if (e.origin === location.origin) takeRoute(e.data); });
+  try {
+    const ch = new BroadcastChannel('mudwasm-' + GAME_ID);
+    ch.onmessage = (e) => { if (takeRoute(e.data) && e.data.id) ch.postMessage({ type: 'wiki-go-ack', id: e.data.id }); };
+  } catch (e) { /* no BroadcastChannel */ }
+  window.MudMiniMap.runQueue = runQueue;
+
+  // ---------- 游戏里查百科：输入「wiki 名字」，或在人物/物品的动作框里点「查百科」 ----------
+  let wikiBox = null;
+  function openWiki(q) {
+    closeWiki();
+    const url = '../wiki/?g=' + encodeURIComponent(GAME_ID) + '&embed=1#/' + (q ? 'search/' + encodeURIComponent(q) : '');
+    wikiBox = el('div', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:9500;background:#111;display:flex;flex-direction:column;' +
+      'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)');
+    const bar = el('div', 'flex:none;display:flex;align-items:center;height:36px;padding:0 8px;background:#222;color:#ccc;font:14px sans-serif');
+    bar.append(el('div', 'flex:1', '百科' + (q ? '：' + q : '')));
+    const x = el('div', 'padding:0 10px;line-height:36px;color:#9cf;cursor:pointer', '返回游戏');
+    x.dataset.mm = 'wikiclose';
+    x.addEventListener('click', closeWiki);
+    bar.append(x);
+    const fr = document.createElement('iframe');
+    fr.src = url; fr.style.cssText = 'flex:1;width:100%;border:0;background:#111';
+    wikiBox.append(bar, fr);
+    document.body.appendChild(wikiBox);
+  }
+  function closeWiki() { if (wikiBox) { wikiBox.remove(); wikiBox = null; } }
+  window.MudMiniMap.wiki = (q) => { wLoad(); if (!GAME_ID) return false; openWiki(q || ''); return true; };
+  window.MudMiniMap.wikiReady = () => !!W;
+  // main.js 直接按名字调用 writeToPop，包一层 window.writeToPop 拦不住；改为看 #hudong 里的内容：
+  // 弹出的是人物/物品的动作按钮（cmdsa / cmdsc），而标题是百科里有的名字，就补一个「查百科」按钮。
+  function addWikiBtn() {
+    const hd = document.getElementById('hudong');
+    if (!W || !hd || hd.querySelector('[data-mm=wikibtn]') || !hd.querySelector('button[onclick^="cmdsa"], button[onclick^="cmdsc"]')) return;
+    const name = plain(window.dialog_title).replace(/^[「『【\[(（].*?[」』】\])）]/, '').trim();
+    if (!name || !W.names.has(name)) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = '查百科';
+    b.dataset.mm = 'wikibtn';
+    b.style.cssText = 'font-size:10px;color:#9cf;width:49%;height:30px';
+    b.addEventListener('click', () => { try { $('#hudong').dialog('close'); } catch (e) { /* ignore */ } openWiki(name); });
+    hd.appendChild(b);
+  }
+  { const hd = document.getElementById('hudong'); if (hd && window.MutationObserver) new MutationObserver(addWikiBtn).observe(hd, { childList: true }); }
+  setTimeout(wLoad, 2500);
+  window.MudMiniMap.gameId = GAME_ID;
 
   // 九宫格中间那格（当前房间名）：点一下打开/关闭
   document.addEventListener('click', (e) => {

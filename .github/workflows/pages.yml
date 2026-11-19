@@ -35,6 +35,10 @@ jobs:
           ls -l web/driver
       - name: Build site
         run: node web/build.mjs --driver web/driver --out site
+      - name: Smoke test (5 games, minimap, wiki) in headless Chrome
+        run: |
+          npm install --prefix tests --no-audit --no-fund
+          CHROME_PATH=$(command -v google-chrome || command -v google-chrome-stable) node tests/smoke.mjs site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

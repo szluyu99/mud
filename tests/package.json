@@ -1,0 +1,9 @@
+{
+  "name": "mud-site-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser smoke tests for the built single-player site (site/). Run: node tests/smoke.mjs site",
+  "dependencies": {
+    "playwright-core": "1.65.1"
+  }
+}

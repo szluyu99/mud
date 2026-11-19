@@ -14,3 +14,5 @@ games/*/mudlib/log/**
 # single-player web build output
 site/
 web/driver/
+tests/node_modules/
+tests/package-lock.json
