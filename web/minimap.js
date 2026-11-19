@@ -4,7 +4,7 @@
 // 自己拼出地图，存在本机（每个游戏一份）。走过的地方逐渐点亮，没去过的是空白。
 //
 // 入口：方向按钮九宫格中间那格（当前房间名），点一下展开，再点一次或点空白处关闭。
-// 展开后以当前位置为中心显示 5×5 范围（＋／－ 切换 5×5、7×7、9×9）；
+// 展开后以当前位置为中心；单指拖动查看别处，双指捏合（电脑上滚轮）或 ＋／－ 缩放，「全图」显示整张图；
 // 点相邻房间直接走一步；点远处去过的房间，按记下的出口找最短路一步步自动走过去，
 // 走不了（没出路、被拦、对不上地图、5 秒没动静）或你自己输入指令时自动停下。
 //
@@ -341,12 +341,19 @@
   function flash(m) { flashMsg = m; flashAt = Date.now(); if (panel) render(); }
 
   // ---------- panel ----------
-  let panel = null;
-  const ZOOMS = [2, 3, 4]; // 半径：5×5 / 7×7 / 9×9
-  let R = 2;
-  try { const z = +(window.zjStore && zjStore.getItem('minimap_r')); if (ZOOMS.includes(z)) R = z; } catch (e) { /* default */ }
+  // 缩放用房间框的宽度 cw（像素）表示；拖动偏移 panX/panY 为 0 时以当前房间为中心。
+  // 单指拖动平移，双指捏合缩放，电脑上滚轮缩放；＋／－ 按钮，「全图」把这张图整个放进来。
+  let panel = null, layerEl = null;
+  const CW_MIN = 10, CW_MAX = 64;
+  const clampCw = (v) => Math.max(CW_MIN, Math.min(CW_MAX, v));
+  let cw = 34, panX = 0, panY = 0, vpW = 0, vpH = 0;
+  try { const z = +(window.zjStore && zjStore.getItem('minimap_cw')); if (z >= CW_MIN && z <= CW_MAX) cw = z; } catch (e) { /* default */ }
+  function saveZoom() { try { zjStore.setItem('minimap_cw', String(Math.round(cw * 10) / 10)); } catch (e) { /* ignore */ } }
+  const pitchX = (w) => w * 1.34, pitchY = (w) => w * 0.94, cellH = (w) => w * 0.6;
+  let followKey = null;   // 当前房间一变就回到以它为中心
+  let suppressClick = 0;  // 刚拖动/捏合过，吞掉随后的那次点击
 
-  function close() { if (panel) { panel.remove(); panel = null; } }
+  function close() { if (panel) { panel.remove(); panel = null; layerEl = null; } }
 
   function el(tag, css, text) {
     const e = document.createElement(tag);
@@ -355,6 +362,77 @@
     return e;
   }
 
+  // 以 (mx,my)（视口内坐标）为不动点缩放
+  function zoomAt(f, mx, my) {
+    const ncw = clampCw(cw * f), s = ncw / cw;
+    const cX = vpW / 2 + panX, cY = vpH / 2 + panY;
+    panX = mx + (cX - mx) * s - vpW / 2; panY = my + (cY - my) * s - vpH / 2;
+    cw = ncw; saveZoom(); render();
+  }
+  function fitAll() {
+    const cur = S.cur, g = cur && S.segs[cur.seg];
+    if (!g) return;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const key in g) {
+      const [x, y, z] = key.split(',').map(Number);
+      if (z !== cur.z) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    if (x0 === Infinity) return;
+    const cols = x1 - x0, rows = y1 - y0;
+    cw = clampCw(Math.min((vpW - 10) / (1.34 * cols + 1), (vpH - 10) / (0.94 * rows + 0.6), 40));
+    panX = -(((x0 + x1) / 2 - cur.x) * pitchX(cw)); panY = -(((y0 + y1) / 2 - cur.y) * pitchY(cw));
+    saveZoom(); render();
+  }
+
+  // ---------- 手势 ----------
+  const ptrs = new Map();
+  let g0 = null;
+  const rel = (e) => { const b = panel.querySelector('[data-mm=vp]').getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
+  function gStart() {
+    const p = [...ptrs.values()];
+    if (!p.length) { g0 = null; return; }
+    const m = p.length > 1 ? { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 } : p[0];
+    const d = p.length > 1 ? Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) : 0;
+    g0 = { m, d, n: p.length, cw, panX, panY, moved: false, s: 1, m1: m };
+  }
+  function gMove() {
+    if (!g0 || !layerEl) return;
+    const p = [...ptrs.values()];
+    const m1 = p.length > 1 ? { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 } : p[0];
+    let s = 1;
+    if (p.length > 1 && g0.d > 0) s = clampCw(g0.cw * Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) / g0.d) / g0.cw;
+    if (!g0.moved && Math.hypot(m1.x - g0.m.x, m1.y - g0.m.y) < 6 && Math.abs(s - 1) < 0.04) return;
+    g0.moved = true; g0.s = s; g0.m1 = m1;
+    layerEl.style.transform = 'translate(' + (m1.x - g0.m.x * s) + 'px,' + (m1.y - g0.m.y * s) + 'px) scale(' + s + ')';
+  }
+  function gEnd() {
+    if (!g0) return;
+    if (g0.moved) {
+      const s = g0.s, m1 = g0.m1;
+      const cX = vpW / 2 + g0.panX, cY = vpH / 2 + g0.panY;
+      cw = g0.cw * s;
+      panX = m1.x + (cX - g0.m.x) * s - vpW / 2; panY = m1.y + (cY - g0.m.y) * s - vpH / 2;
+      if (s !== 1) saveZoom();
+      suppressClick = Date.now();
+      g0 = null; render();
+    } else g0 = null;
+  }
+  function onDown(e) {
+    if (!e.target.closest || !e.target.closest('[data-mm=vp]')) return;
+    if (g0) gEnd();
+    ptrs.set(e.pointerId, rel(e)); gStart();
+  }
+  function onMove(e) { if (!ptrs.has(e.pointerId) || !panel) return; ptrs.set(e.pointerId, rel(e)); gMove(); }
+  function onUp(e) {
+    if (!ptrs.has(e.pointerId)) return;
+    gEnd(); ptrs.delete(e.pointerId);
+    if (ptrs.size && panel) gStart();
+  }
+  window.addEventListener('pointermove', onMove, { passive: true });
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+
   function render() {
     const out = document.getElementById('out') || document.getElementById('mright');
     if (!out) return;
@@ -362,38 +440,50 @@
     if (!panel) {
       panel = el('div', 'position:fixed;z-index:900;overflow:hidden;background:rgba(0,0,0,.88);' +
         'border:1px solid rgba(150,150,150,.5);border-radius:3px;font-size:10px;line-height:1.2;color:#ccc;' +
-        'box-sizing:border-box;touch-action:manipulation;-webkit-user-select:none;user-select:none');
+        'box-sizing:border-box;touch-action:none;-webkit-user-select:none;user-select:none');
+      panel.addEventListener('click', (e) => {
+        // 只吞地图区域里紧跟拖动/捏合的那次点击，按钮不受影响
+        if (Date.now() - suppressClick < 400 && e.target.closest && e.target.closest('[data-mm=vp]')) { e.stopPropagation(); e.preventDefault(); }
+      }, true);
       panel.addEventListener('click', (e) => { if (e.target === panel || e.target.dataset.bg) close(); });
+      panel.addEventListener('pointerdown', onDown);
+      panel.addEventListener('wheel', (e) => {
+        if (!e.target.closest('[data-mm=vp]')) return;
+        e.preventDefault();
+        const p = rel(e);
+        zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y);
+      }, { passive: false });
+      panel.addEventListener('gesturestart', (e) => e.preventDefault());
       document.body.appendChild(panel);
     }
     panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px';
     panel.style.width = r.width + 'px'; panel.style.height = r.height + 'px';
     panel.textContent = '';
 
-    const W = r.width, H = r.height;
-    const head = el('div', 'position:absolute;left:6px;right:90px;top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ddd',
-      '小地图 · ' + (roomTitle || '未知'));
-    const btn = (right, text, fn) => {
-      const b = el('div', 'position:absolute;top:0;width:28px;height:22px;text-align:center;line-height:22px;color:#aaa;cursor:pointer;font-size:13px', text);
-      b.style.right = right + 'px';
-      b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
-      return b;
-    };
-    const zoom = (k) => {
-      const i = ZOOMS.indexOf(R) + k;
-      if (i < 0 || i >= ZOOMS.length) return;
-      R = ZOOMS[i];
-      try { zjStore.setItem('minimap_r', String(R)); } catch (e) { /* ignore */ }
-      render();
-    };
-    const zi = ZOOMS.indexOf(R);
-    const zOut = btn(62, '－', () => zoom(1)), zIn = btn(32, '＋', () => zoom(-1));
-    zOut.dataset.mm = 'zoomout'; zIn.dataset.mm = 'zoomin';
-    if (zi === ZOOMS.length - 1) zOut.style.color = '#555';
-    if (zi === 0) zIn.style.color = '#555';
-    panel.append(head, zOut, zIn, btn(2, '✕', close));
-
     const cur = S.cur, here = curCell();
+    const ck = cur ? cur.seg + ':' + k3(cur.x, cur.y, cur.z) : null;
+    if (ck !== followKey) { followKey = ck; panX = panY = 0; }
+
+    const head = el('div', 'position:absolute;left:6px;top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ddd',
+      '小地图 · ' + (roomTitle || '未知'));
+    const btns = [];
+    const btn = (text, mm, fn, dim) => {
+      const b = el('div', 'flex:none;min-width:26px;height:22px;padding:0 3px;box-sizing:border-box;text-align:center;line-height:22px;cursor:pointer;' +
+        'font-size:' + (text.length > 1 ? '11px' : '13px') + ';color:' + (dim ? '#555' : '#aaa'), text);
+      b.dataset.mm = mm;
+      b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+      btns.push(b);
+    };
+    if (panX || panY) btn('定位', 'center', () => { panX = panY = 0; render(); });
+    btn('全图', 'fit', fitAll);
+    btn('－', 'zoomout', () => zoomAt(1 / 1.3, vpW / 2, vpH / 2), cw <= CW_MIN);
+    btn('＋', 'zoomin', () => zoomAt(1.3, vpW / 2, vpH / 2), cw >= CW_MAX);
+    btn('✕', 'close', close);
+    const bar = el('div', 'position:absolute;right:2px;top:0;display:flex');
+    bar.append(...btns);
+    head.style.right = (btns.length * 30 + 6) + 'px';
+    panel.append(head, bar);
+
     const foot = el('div', 'position:absolute;left:6px;right:6px;bottom:5px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis');
     if (!cur || !here) {
       foot.textContent = '还没有记录，走几步就会显示。';
@@ -401,60 +491,66 @@
       return;
     }
 
-    // 网格大小：N 格 + (N-1) 段连线，尽量填满，又不超出
-    const N = R * 2 + 1;
+    // 视口：标题栏和底栏之间
     const top = 24, bottom = 40;
-    const gw = W - 12, gh = H - top - bottom;
-    const gap = Math.max(5, Math.min(16, Math.floor(Math.min(gw, gh) / (N * 4.4))));
-    const cw = Math.floor((gw - gap * (N - 1)) / N);
-    const ch = Math.min(Math.floor((gh - gap * (N - 1)) / N), Math.max(16, Math.floor(cw * 0.55)));
-    const ox = 6 + Math.floor((gw - (cw * N + gap * (N - 1))) / 2), oy = top + Math.floor((gh - (ch * N + gap * (N - 1))) / 2);
-    panel.style.fontSize = R >= 4 ? '9px' : '10px';
-    const cx = (i) => ox + (i + R) * (cw + gap), cy = (j) => oy + (j + R) * (ch + gap);
-    const bg = el('div', 'position:absolute;left:0;top:0;right:0;bottom:0'); bg.dataset.bg = 1;
-    panel.append(bg);
+    vpW = r.width; vpH = r.height - top - bottom;
+    const vp = el('div', 'position:absolute;left:0;right:0;top:' + top + 'px;bottom:' + bottom + 'px;overflow:hidden');
+    vp.dataset.bg = 1; vp.dataset.mm = 'vp';
+    const layer = el('div', 'position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0');
+    layer.dataset.bg = 1;
+    vp.append(layer); layerEl = layer;
+    panel.append(vp);
 
-    // 连线（画在房间框下面）
+    const px = pitchX(cw), py = pitchY(cw), ch = cellH(cw);
+    const cX = vpW / 2 + panX, cY = vpH / 2 + panY;
+    const sx = (dx) => cX + dx * px, sy = (dy) => cY + dy * py;  // 房间中心在视口里的位置
+    // 多画一圈视口外的，拖动时边上不至于一片空白
+    const vis = (dx, dy) => { const x = sx(dx), y = sy(dy); return x > -vpW && x < vpW * 2 && y > -vpH && y < vpH * 2; };
+    const fs = cw >= 40 ? 10 : cw >= 26 ? 9 : cw >= 18 ? 8 : 0;
+    const seg = S.segs[cur.seg] || {};
+
     const line = (x1, y1, x2, y2, dim) => {
       const len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
       const l = el('div', 'position:absolute;height:1px;transform-origin:0 0;pointer-events:none;background:' + (dim ? 'rgba(150,150,150,.35)' : 'rgba(150,150,150,.8)'));
       l.style.left = x1 + 'px'; l.style.top = y1 + 'px'; l.style.width = len + 'px'; l.style.transform = 'rotate(' + ang + 'deg)';
-      panel.append(l);
+      layer.append(l);
     };
-    for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) {
-      const c = cellAt(cur.seg, cur.x + i, cur.y + j, cur.z);
-      if (!c) continue;
+    const shown = [];
+    for (const key in seg) {
+      const [x, y, z] = key.split(',').map(Number);
+      if (z !== cur.z || !vis(x - cur.x, y - cur.y)) continue;
+      shown.push([key, x - cur.x, y - cur.y, seg[key]]);
+    }
+    for (const [key, dx, dy, c] of shown) {
       for (const d in c.e) {
         const v = D[d];
         if (!v || v[2] !== 0) continue;
-        const [nx, ny, nz] = stepKey(cur.seg, k3(cur.x + i, cur.y + j, cur.z), d).split(',').map(Number);
+        const [nx, ny, nz] = stepKey(cur.seg, key, d).split(',').map(Number);
         if (nz !== cur.z) continue;
-        const ni = nx - cur.x, nj = ny - cur.y;
-        if (Math.abs(ni) > R || Math.abs(nj) > R) continue;
-        line(cx(i) + cw / 2, cy(j) + ch / 2, cx(ni) + cw / 2, cy(nj) + ch / 2, !cellAt(cur.seg, cur.x + ni, cur.y + nj, cur.z));
+        line(sx(dx), sy(dy), sx(nx - cur.x), sy(ny - cur.y), !cellAt(cur.seg, nx, ny, nz));
       }
     }
 
-    // 房间
-    const box = (i, j, text, kind, dir, badge, far) => {
+    const box = (dx, dy, text, kind, dir, badge, far) => {
       const b = el('div', 'position:absolute;box-sizing:border-box;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;' +
-        'text-align:center;border-radius:3px;padding:0 2px;cursor:' + (dir || far ? 'pointer' : 'default') + ';' +
+        'text-align:center;border-radius:' + (cw < 18 ? 2 : 3) + 'px;padding:0 1px;cursor:' + (dir || far ? 'pointer' : 'default') + ';' +
         (kind === 'here' ? 'background:#448EF3;color:#fff;border:1px solid #9cf;' :
          kind === 'near' ? 'background:rgba(200,200,200,.18);color:#eee;border:1px solid #8c8;' :
          kind === 'ghost' ? 'background:transparent;color:#888;border:1px dashed #666;' :
          kind === 'target' ? 'background:rgba(255,190,80,.25);color:#fff;border:1px solid #fc6;' :
-         'background:rgba(200,200,200,.1);color:#bbb;border:1px solid rgba(150,150,150,.4);'), text);
-      b.style.left = cx(i) + 'px'; b.style.top = cy(j) + 'px'; b.style.width = cw + 'px'; b.style.height = ch + 'px';
-      b.style.lineHeight = (ch - 2) + 'px';
-      if (badge) b.title = badge;
-      b.dataset.mm = 'cell'; b.dataset.ij = i + ',' + j;
+         'background:rgba(200,200,200,.1);color:#bbb;border:1px solid rgba(150,150,150,.4);'), fs ? text : '');
+      b.style.left = (sx(dx) - cw / 2) + 'px'; b.style.top = (sy(dy) - ch / 2) + 'px';
+      b.style.width = cw + 'px'; b.style.height = ch + 'px';
+      b.style.fontSize = (fs || 8) + 'px'; b.style.lineHeight = Math.max(0, ch - 2) + 'px';
+      b.title = text;
+      b.dataset.mm = 'cell'; b.dataset.ij = dx + ',' + dy;
       if (dir) b.addEventListener('click', (e) => { e.stopPropagation(); go(dir); });
       else if (far) b.addEventListener('click', (e) => { e.stopPropagation(); startRoute(far); });
-      panel.append(b);
-      if (badge) {
+      layer.append(b);
+      if (badge && cw >= 22) {
         const s = el('div', 'position:absolute;font-size:9px;line-height:9px;color:#fc6;pointer-events:none', badge);
-        s.style.left = (cx(i) + cw - 9) + 'px'; s.style.top = (cy(j) + 1) + 'px';
-        panel.append(s);
+        s.style.left = (sx(dx) + cw / 2 - 9) + 'px'; s.style.top = (sy(dy) - ch / 2 + 1) + 'px';
+        layer.append(s);
       }
     };
     // 当前房间能直接走到的格子
@@ -469,18 +565,19 @@
       if (there && label && there.t !== label) continue;
       near[(nx - cur.x) + ',' + (ny - cur.y)] = d;
     }
-    for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) {
-      const c = cellAt(cur.seg, cur.x + i, cur.y + j, cur.z);
-      const dir = near[i + ',' + j];
-      const ud = c ? ((Object.keys(c.e).some((d) => D[d] && D[d][2] > 0) ? '↑' : '') + (Object.keys(c.e).some((d) => D[d] && D[d][2] < 0) ? '↓' : '')) : '';
-      if (i === 0 && j === 0) box(0, 0, here.t, 'here', null, ud);
-      else if (c) {
-        const pos = { seg: cur.seg, x: cur.x + i, y: cur.y + j, z: cur.z };
-        const isT = route && samePos(route.target, pos);
-        box(i, j, c.t, isT ? 'target' : dir ? 'near' : 'seen', dir, ud, dir ? null : pos);
-      }
-      else if (dir) box(i, j, plain(here.e[dir]) || '？', 'ghost', dir, '');
+    const upDown = (c) => (Object.keys(c.e).some((d) => D[d] && D[d][2] > 0) ? '↑' : '') + (Object.keys(c.e).some((d) => D[d] && D[d][2] < 0) ? '↓' : '');
+    for (const [, dx, dy, c] of shown) {
+      if (!dx && !dy) continue;
+      const dir = near[dx + ',' + dy];
+      const pos = { seg: cur.seg, x: cur.x + dx, y: cur.y + dy, z: cur.z };
+      const isT = route && samePos(route.target, pos);
+      box(dx, dy, c.t, isT ? 'target' : dir ? 'near' : 'seen', dir, upDown(c), dir ? null : pos);
     }
+    for (const k in near) {
+      const [dx, dy] = k.split(',').map(Number);
+      if (!cellAt(cur.seg, cur.x + dx, cur.y + dy, cur.z)) box(dx, dy, plain(here.e[near[k]]) || '？', 'ghost', near[k], '');
+    }
+    box(0, 0, here.t, 'here', null, upDown(here));
 
     // 上下楼、out/enter 这类不在平面上的出口放在底部（房间里的动作按钮，比如「浇花」，不算出口）
     const MOVES = ['out', 'enter', 'in'];
@@ -506,12 +603,12 @@
         a.addEventListener('click', (e) => { e.stopPropagation(); go(d); });
         foot.append(a);
       }
-    } else foot.textContent = '点去过的房间就会走过去，点空白处关闭。';
+    } else foot.textContent = '拖动查看，双指或 ＋－ 缩放，点房间走过去。';
     panel.append(foot);
   }
 
   function toggle() { if (panel) close(); else render(); }
-  window.MudMiniMap = { toggle, close, walkTo: startRoute, stop: () => stopRoute(null), state: () => ({ cur: S.cur, route, R }), findPath, reset: () => { S = { segs: {}, next: 1, cur: null }; save(); if (panel) render(); } };
+  window.MudMiniMap = { toggle, close, walkTo: startRoute, stop: () => stopRoute(null), state: () => ({ cur: S.cur, route, cw, panX, panY }), findPath, reset: () => { S = { segs: {}, next: 1, cur: null }; save(); if (panel) render(); } };
 
   // 九宫格中间那格（当前房间名）：点一下打开/关闭
   document.addEventListener('click', (e) => {
