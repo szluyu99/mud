@@ -143,6 +143,10 @@ async function zjmudExtras(page, ctx) {
   await p2.evaluate(() => document.querySelector('button[data-go]').click()); await p2.waitForTimeout(1000);
   check('zjmud: wiki tab gets the game\'s ack', /已交给游戏/.test(await p2.evaluate(() => document.querySelector('button[data-go]').textContent)));
   check('zjmud: game walks to 中央广场 from wiki tab', await waitRoom(page, '中央广场', 12000), await room(page));
+  // 拜师条件对照：岳不群要悟性 ≥ 23，新角色悟性 20，应该显示还差 1 条
+  await p2.evaluate((h) => { location.hash = h; }, '#/npc/' + encodeURIComponent('/kungfu/class/huashan/yue-buqun'));
+  const rcOk = await until(p2, () => /还差 1 条/.test(document.getElementById('rcbox')?.innerText || ''), 8000);
+  check('zjmud: wiki tab checks 拜师条件 against the character', rcOk, await p2.evaluate(() => document.getElementById('rcbox')?.innerText.slice(0, 80)));
   check('zjmud: wiki tab has no page errors', !e2.length, e2);
   await p2.close();
 }

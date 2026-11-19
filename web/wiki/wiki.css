@@ -48,3 +48,9 @@ ul.rc li { margin: 2px 0; }
 .said { color: #b9a77a; margin-top: 4px; }
 .said div { margin: 2px 0; }
 body.embed #play, body.embed #game { display: none !important; }
+
+.rcv { margin: 4px 0 6px; padding: 6px 8px; border-radius: 4px; font-size: 14px; }
+.rcv.ok { background: #1e3a24; color: #9e9; }
+.rcv.no { background: #3a1e1e; color: #f99; }
+ul.rc b.ok { color: #6d6; }
+ul.rc b.no { color: #f66; }

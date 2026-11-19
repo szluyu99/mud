@@ -138,16 +138,47 @@
     return chips(opts, f, '#/npcs') + '<div class="muted">按经验从高到低</div>' + listPage(es, '#/npcs' + (f ? '?f=' + f : ''), page, ([k, n]) =>
       row('#/npc/' + enc(k), n.name + (n.nick ? '「' + n.nick + '」' : ''), n.fam ? n.fam.n : '', n.at[0] ? roomLabel(n.at[0]) : n.title));
   }
-  function recruitBox(n) {
+  // 拜师条件逐条比对。c = [键, 运算, 值]，含义是「玩家的这项 运算 值 时师父拒绝」。
+  function statOf(st, k) {
+    if (k === 'gender' || k === 'class' || k === 'fam') return st[k] || '';
+    const [g, x] = k.split(':');
+    return ((st[g] || {})[x]) || 0;
+  }
+  function refused(st, c) {
+    const v = statOf(st, c[0]), w = c[2];
+    switch (c[1]) {
+      case '<': return v < w; case '<=': return v <= w; case '>': return v > w; case '>=': return v >= w;
+      case '==': return v === w; case '!=': return v !== w;
+    }
+    return false;
+  }
+  function reqOk(st, r) {
+    if (r.any) return r.any.some((c) => c && !refused(st, c));
+    if (r.c) return !refused(st, r.c);
+    return null;
+  }
+  function mark(ok) { return ok === null ? '' : ok ? '<b class="ok">✓</b> ' : '<b class="no">✗</b> '; }
+  function recruitBox(n, st) {
     const rc = n.rc || { req: [], said: [], daily: 0 };
+    let bad = 0, known = 0;
     const li = rc.req.map((r) => {
       let t = esc(r.t);
       if (r.s && D.skills[r.s]) { const nm = esc(D.skills[r.s].name); t = t.replace(nm, skLink(r.s)); }
-      return '<li>' + t + '</li>';
+      const ok = st ? reqOk(st, r) : null;
+      if (ok !== null) { known++; if (!ok) bad++; }
+      return '<li>' + mark(ok) + t + '</li>';
     });
     if (rc.daily) li.push('<li>每天收徒有名额，满了要第二天再来</li>');
-    li.push('<li class="muted">通用：没有拜过别的门派、没有叛过师</li>');
-    return '<ul class="rc">' + li.join('') + '</ul>' +
+    let famOk = null;
+    if (st) {
+      famOk = !st.fam || st.fam === n.fam.n;
+      known++; if (!famOk) bad++;
+    }
+    li.push('<li class="muted">' + mark(famOk) + '通用：没有拜过别的门派' + (st && st.fam ? '（你现在是' + esc(st.fam) + '）' : '') + '、没有叛过师</li>');
+    const verdict = !st ? '<div class="muted" id="rcwho">打开游戏并登录后，这里会逐条对照你的角色。</div>'
+      : '<div class="rcv ' + (bad ? 'no' : 'ok') + '">' + esc(st.name || '你') + '：' +
+        (bad ? '还差 ' + bad + ' 条' : known ? '读得出的条件都满足了，可以去拜师' : '没有读出可比对的条件') + '</div>';
+    return verdict + '<ul class="rc">' + li.join('') + '</ul>' +
       (!rc.req.length ? '<div class="muted">源码里没有读出具体的属性要求' + (rc.said.length ? '，下面是师父拒绝时说的话' : '') + '。</div>' : '') +
       (rc.said.length ? '<div class="said">' + rc.said.map((s) => '<div>「' + esc(s) + '」</div>').join('') + '</div>' : '');
   }
@@ -160,7 +191,7 @@
       kv([['门派', n.fam ? link('fam', n.fam.n, n.fam.n) + ' 第 ' + n.fam.g + ' 代' + (n.fam.t ? ' ' + esc(n.fam.t) : '') : ''],
         ['收徒', n.teach && n.fam ? '可以拜师（apprentice ' + esc(n.id) + '）' : ''], ['性别', esc(n.gender)], ['年龄', n.age],
         ['经验', n.exp.toLocaleString()], ['气血', n.qi], ['内力', n.neili], ['神', shen]]) +
-      (n.teach && n.fam ? section('拜师条件', recruitBox(n)) : '') +
+      (n.teach && n.fam ? section('拜师条件', '<div id="rcbox">' + recruitBox(n, STATS) + '</div>') : '') +
       (n.long ? '<h3>描述</h3><div class="long">' + esc(n.long) + '</div>' : '') +
       section('在哪', showWhere(n.at)) +
       section('武功', skillTable(n.sk, n.map)) +
@@ -261,7 +292,7 @@
       case 'skills': html = skills(f, page); break;
       case 'skill': html = skill(key); break;
       case 'npcs': html = npcs(f, page); break;
-      case 'npc': html = npc(key); break;
+      case 'npc': html = npc(key); { const n = D.npcs[key]; if (n && n.teach && n.fam) setTimeout(() => refreshRecruit(key), 0); } break;
       case 'items': html = items(f, page); break;
       case 'item': html = item(key); break;
       case 'rooms': html = roomsPage(); break;
@@ -288,6 +319,34 @@
   // 在游戏里打开的百科（嵌在游戏页面里）直接交给外层页面；单独打开的百科，通过同源的
   // BroadcastChannel 交给已经开着的游戏页面；游戏没开着就退回到复制指令。
   const EMBED = /[?&]embed=1\b/.test(location.search);
+  // 向打开着的游戏要当前角色的属性和技能（嵌在游戏里用 postMessage，单独的百科页用 BroadcastChannel）
+  let STATS = null, statsAt = 0;
+  function askStats(done) {
+    if (Date.now() - statsAt < 3000) return;
+    statsAt = Date.now();
+    const id = Math.random().toString(36).slice(2);
+    const take = (d) => { if (d && d.type === 'wiki-stats-reply' && d.id === id && d.stats) { STATS = d.stats; done(); } };
+    if (EMBED && window.parent !== window) {
+      const h = (e) => { if (e.origin === location.origin) take(e.data); };
+      window.addEventListener('message', h);
+      setTimeout(() => window.removeEventListener('message', h), 3000);
+      window.parent.postMessage({ type: 'wiki-stats', id }, location.origin);
+      return;
+    }
+    let ch;
+    try { ch = new BroadcastChannel('mudwasm-' + game); } catch (e) { return; }
+    ch.onmessage = (e) => take(e.data);
+    ch.postMessage({ type: 'wiki-stats', id });
+    setTimeout(() => ch.close(), 3000);
+  }
+  function refreshRecruit(f) {
+    askStats(() => {
+      const box = document.getElementById('rcbox');
+      const n = D.npcs[f];
+      if (box && n && location.hash.includes(enc(f))) box.innerHTML = recruitBox(n, STATS);
+    });
+  }
+
   function sendGo(b) {
     const cmds = b.dataset.go.split(';'), file = b.dataset.file || '';
     const say = (t) => { b.textContent = t; setTimeout(() => { b.textContent = '带我去'; }, 3000); };

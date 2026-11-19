@@ -855,10 +855,26 @@
     note('按百科路线走：' + cmds.length + ' 条指令。');
     return true;
   }
-  window.addEventListener('message', (e) => { if (e.origin === location.origin) takeRoute(e.data); });
+  // 百科问「我现在的属性、技能」：游戏里调 LPC 的 mudwasm_stats，拿到就回给百科（拜师条件逐条比对用）
+  function giveStats(d, reply) {
+    if (!d || d.type !== 'wiki-stats' || !window.MudWasm || !MudWasm.lpc) return false;
+    MudWasm.lpc('mudwasm_stats', []).then((t) => {
+      let st = null;
+      try { st = JSON.parse(t); } catch (e) { /* not ready */ }
+      if (st) reply({ type: 'wiki-stats-reply', id: d.id, stats: st });
+    }).catch(() => {});
+    return true;
+  }
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return;
+    if (!giveStats(e.data, (m) => e.source && e.source.postMessage(m, location.origin))) takeRoute(e.data);
+  });
   try {
     const ch = new BroadcastChannel('mudwasm-' + GAME_ID);
-    ch.onmessage = (e) => { if (takeRoute(e.data) && e.data.id) ch.postMessage({ type: 'wiki-go-ack', id: e.data.id }); };
+    ch.onmessage = (e) => {
+      if (giveStats(e.data, (m) => ch.postMessage(m))) return;
+      if (takeRoute(e.data) && e.data.id) ch.postMessage({ type: 'wiki-go-ack', id: e.data.id });
+    };
   } catch (e) { /* no BroadcastChannel */ }
   window.MudMiniMap.runQueue = runQueue;
 

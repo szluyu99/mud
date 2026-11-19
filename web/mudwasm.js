@@ -198,6 +198,7 @@
         },
         onDisconnect: (id) => { const s = sockets.get(id); if (s) s._closed(); },
         handlers: {},
+        _lpcPending: {},
       };
       status('正在编译游戏世界（第一次会慢一些）…');
       await new Promise((r) => setTimeout(r, 30));
@@ -344,6 +345,21 @@
     location.reload();
   }
 
-  window.MudWasm = { start, Socket, exportSave, importSave, resetSave, sync, setWizard,
+  // Call a function the mudlib exported with js_export(); resolves with its
+  // return value (a string). The call runs inside the normal tick loop.
+  function lpc(name, args) {
+    return new Promise((resolve, reject) => {
+      if (!M || !M.fluffos) return reject(new Error('game not started'));
+      const id = M.ccall('fluffos_lpc_call', 'number', ['string', 'string'], [name, JSON.stringify(args || [])]);
+      if (id < 0) return reject(new Error('no such export: ' + name));
+      const t = setTimeout(() => { delete M.fluffos._lpcPending[id]; reject(new Error('timeout')); }, 5000);
+      M.fluffos._lpcPending[id] = {
+        resolve: (v) => { clearTimeout(t); delete M.fluffos._lpcPending[id]; resolve(v); },
+        reject: (e) => { clearTimeout(t); delete M.fluffos._lpcPending[id]; reject(e); },
+      };
+    });
+  }
+
+  window.MudWasm = { start, Socket, lpc, exportSave, importSave, resetSave, sync, setWizard,
     storageStatus: () => persistState, requestPersist };
 })();

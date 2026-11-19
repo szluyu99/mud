@@ -58,29 +58,30 @@ function atom(a, ob, skName) {
   const num = '(-?\\d+)';
   const op = '(<=|>=|<|>|==|!=)';
   if ((m = new RegExp('^' + O + '->query_skill\\(\\s*"([\\w-]+)"\\s*,\\s*1\\s*\\)\\s*' + op + '\\s*' + num + '$').exec(a)))
-    return { k: 'skill', s: m[1], t: skName(m[1]) + '（基本等级）' + NEG[m[2]] + ' ' + m[3] };
+    return { k: 'skill', s: m[1], t: skName(m[1]) + '（基本等级）' + NEG[m[2]] + ' ' + m[3], c: ['b:' + m[1], m[2], +m[3]] };
   if ((m = new RegExp('^' + O + '->query_skill\\(\\s*"([\\w-]+)"\\s*\\)\\s*' + op + '\\s*' + num + '$').exec(a)))
-    return { k: 'skill', s: m[1], t: skName(m[1]) + '（有效等级）' + NEG[m[2]] + ' ' + m[3] };
+    return { k: 'skill', s: m[1], t: skName(m[1]) + '（有效等级）' + NEG[m[2]] + ' ' + m[3], c: ['e:' + m[1], m[2], +m[3]] };
   if ((m = new RegExp('^' + O + '->(query_\\w+)\\(\\s*\\)\\s*' + op + '\\s*' + num + '$').exec(a)) && ATTR[m[1]])
-    return { k: 'attr', t: ATTR[m[1]] + ' ' + NEG[m[2]] + ' ' + m[3] };
+    return { k: 'attr', t: ATTR[m[1]] + ' ' + NEG[m[2]] + ' ' + m[3], c: ['a:' + m[1].slice(6), m[2], +m[3]] };
   if ((m = new RegExp('^' + O + '->query\\(\\s*"(\\w+)"\\s*\\)\\s*' + op + '\\s*' + num + '$').exec(a)) && PROP[m[1]]) {
+    const c = ['p:' + m[1], m[2], +m[3]];
     if (m[1] === 'shen') {
       const n = +m[3];
-      if ((m[2] === '<' || m[2] === '<=') && n >= 0) return { k: 'shen', t: '正气 ≥ ' + n };
-      if ((m[2] === '>' || m[2] === '>=') && n <= 0) return { k: 'shen', t: '邪气 ≥ ' + -n };
-      if ((m[2] === '<' || m[2] === '<=')) return { k: 'shen', t: '邪气 ≤ ' + -n };
-      return { k: 'shen', t: '正气 ≤ ' + n };
+      if ((m[2] === '<' || m[2] === '<=') && n >= 0) return { k: 'shen', t: '正气 ≥ ' + n, c };
+      if ((m[2] === '>' || m[2] === '>=') && n <= 0) return { k: 'shen', t: '邪气 ≥ ' + -n, c };
+      if ((m[2] === '<' || m[2] === '<=')) return { k: 'shen', t: '邪气 ≤ ' + -n, c };
+      return { k: 'shen', t: '正气 ≤ ' + n, c };
     }
-    return { k: 'prop', t: PROP[m[1]] + ' ' + NEG[m[2]] + ' ' + m[3] };
+    return { k: 'prop', t: PROP[m[1]] + ' ' + NEG[m[2]] + ' ' + m[3], c };
   }
   if ((m = new RegExp('^' + O + '->query\\(\\s*"gender"\\s*\\)\\s*(==|!=)\\s*"([^"]+)"$').exec(a)))
-    return { k: 'gender', t: m[1] === '==' ? '性别不能是' + m[2] : '性别必须是' + m[2] };
+    return { k: 'gender', t: m[1] === '==' ? '性别不能是' + m[2] : '性别必须是' + m[2], c: ['gender', m[1], m[2]] };
   if ((m = new RegExp('^' + O + '->query\\(\\s*"class"\\s*\\)\\s*(==|!=)\\s*"([^"]+)"$').exec(a)))
-    return { k: 'class', t: m[1] === '==' ? '身份不能是' + (CLASS[m[2]] || m[2]) : '身份必须是' + (CLASS[m[2]] || m[2]) };
+    return { k: 'class', t: m[1] === '==' ? '身份不能是' + (CLASS[m[2]] || m[2]) : '身份必须是' + (CLASS[m[2]] || m[2]), c: ['class', m[1], m[2]] };
   if ((m = new RegExp('^' + O + '->query\\(\\s*"family/family_name"\\s*\\)\\s*!=\\s*"([^"]+)"$').exec(a)))
-    return { k: 'fam', t: '须先拜入' + m[1] + '（找辈分低的师父）' };
+    return { k: 'fam', t: '须先拜入' + m[1] + '（找辈分低的师父）', c: ['fam', '!=', m[1]] };
   if ((m = /^\w+\["family_name"\]\s*!=\s*"([^"]+)"$/.exec(a)))
-    return { k: 'fam', t: '须先拜入' + m[1] + '（找辈分低的师父）' };
+    return { k: 'fam', t: '须先拜入' + m[1] + '（找辈分低的师父）', c: ['fam', '!=', m[1]] };
   if ((m = new RegExp('^!\\s*' + O + '->query\\(\\s*"(\\w+)"\\s*\\)$').exec(a)) && PROP[m[1]])
     return null;
   return null;
@@ -138,9 +139,9 @@ export function recruitInfo(mudlibDir, npcFile, skName) {
       if (!ors.length || !ands.length) continue;
       let got = [];
       if (ors.length > 1) got = ors.map((a) => atom(a, f.ob, skName));
-      else if (ands.length > 1) { const r = ands.map((a) => atom(a, f.ob, skName)); got = r.every(Boolean) ? [{ k: 'any', t: '以下满足一项：' + r.map((x) => x.t).join('，') }] : [null]; }
+      else if (ands.length > 1) { const r = ands.map((a) => atom(a, f.ob, skName)); got = r.every(Boolean) ? [{ k: 'any', t: '以下满足一项：' + r.map((x) => x.t).join('，'), any: r.map((x) => x.c) }] : [null]; }
       else got = [atom(ands[0], f.ob, skName)];
-      if (got.every(Boolean)) { for (const g of got) if (!req.some((x) => x.t === g.t)) req.push({ t: g.t, ...(g.s ? { s: g.s } : {}) }); }
+      if (got.every(Boolean)) { for (const g of got) if (!req.some((x) => x.t === g.t)) req.push({ t: g.t, ...(g.s ? { s: g.s } : {}), ...(g.c ? { c: g.c } : {}), ...(g.any ? { any: g.any } : {}) }); }
       else if (msg && msg.length > 3 && !/[A-Za-z_]{4,}/.test(msg) && !said.includes(msg)) said.push(msg);
     }
   }
