@@ -207,6 +207,7 @@
     roomTitle = plain(str);
     roomExits = {};
     scheduleCommit();
+    if (queue && queue.move) { queue.move = false; queue.cmds.shift(); queue.retry = 0; clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 300); }
     return origST.apply(this, arguments);
   };
   window.writeToEX = function (str) {
@@ -229,7 +230,13 @@
   if (window.sock && typeof sock.emit === 'function') {
     const origEmit = sock.emit;
     sock.emit = function (ev, data) {
-      if (ev === 'stream') { if (!autoSending && route) stopRoute('你自己输入了指令，自动走路已停止。'); noteCmd(data); }
+      if (ev === 'stream' && !autoSending) {
+        const parts = String(data).split(/[;；]/).map((x) => x.trim()).filter(Boolean);
+        if (route) stopRoute('你自己输入了指令，自动走路已停止。');
+        if (queue) stopQueue(null);
+        if (parts.length > 1) { runQueue(parts); return; }
+      }
+      if (ev === 'stream') noteCmd(data);
       return origEmit.apply(this, arguments);
     };
   }
@@ -319,8 +326,50 @@
     clearTimeout(route.timer); route = null;
     if (msg) flash(msg); else if (panel) render();
   }
+  // ---------- 用分号连起来的多条指令（百科里复制的路线 fly xx;north;east…）----------
+  // 一条条发：走路的等进了下一个房间再发下一条，fly 等落地，别的指令隔 0.8 秒。
+  let queue = null; // { cmds, timer, retry, move, fly }
+  function runQueue(cmds) { stopQueue(null); queue = { cmds, timer: 0, retry: 0, move: false, fly: false }; qNext(); }
+  function qNext() {
+    if (!queue) return;
+    clearTimeout(queue.timer);
+    if (!queue.cmds.length) { queue = null; note('指令都执行完了。'); return; }
+    const c = queue.cmds[0];
+    queue.fly = /^fly\s/.test(c);
+    queue.move = !queue.fly && (!!roomExits[c] || !!D[c] || /^go\s/.test(c));
+    sendAuto(c);
+    if (queue.fly) queue.timer = setTimeout(() => stopQueue('飞了 15 秒还没落地，后面的指令不发了。'), 15000);
+    else if (queue.move) queue.timer = setTimeout(() => stopQueue('「' + c + '」走了 5 秒还没到，后面的指令不发了。'), 5000);
+    else queue.timer = setTimeout(() => { if (!queue) return; queue.cmds.shift(); qNext(); }, 800);
+  }
+  function stopQueue(msg) {
+    if (!queue) return;
+    clearTimeout(queue.timer); queue = null;
+    if (msg) note(msg);
+  }
+  // 地图开着就在地图底部提示，没开就打到主屏幕上
+  function note(m) {
+    if (panel) { flash(m); return; }
+    if (typeof window.writeToScreen === 'function') window.writeToScreen('\x1b[33m【连续指令】' + m + '\x1b[0m');
+  }
+  function onQueueText(t) {
+    if (queue.fly && /终于赶到了/.test(t)) { queue.fly = false; queue.cmds.shift(); clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 600); return; }
+    if (t === '什么？') { stopQueue('「' + queue.cmds[0] + '」不是有效的指令，后面的不发了。'); return; }
+    if (!queue.move && !queue.fly) return;
+    if (queue.fly && /正在战斗|正躺着|做牢|不能乱跑|有点古怪|没有这个城市|无法驾驭|不对劲|负荷|还没有住房|正在飞行中/.test(t)) {
+      stopQueue('fly 没飞成：' + t.slice(0, 30)); return;
+    }
+    if (/动作还没有完成|正忙着|忙着呢|还在飞/.test(t)) {
+      if (++queue.retry > 8) { stopQueue('一直在忙，后面的指令不发了。'); return; }
+      queue.move = false; clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 1200);
+    } else if (/逃跑失败|拦在面前|想走？|这个方向没有出路|你过不去|动弹不得|哪里也去不了|拦住|挡住|不能离开|无法离开|什么？/.test(t)) {
+      stopQueue('「' + queue.cmds[0] + '」没走成：' + t.slice(0, 30));
+    }
+  }
+
   // 服务端说走不了
   function onText(str) {
+    if (queue) onQueueText(plain(str));
     if (!route || !route.expect) return;
     const t = plain(str);
     if (/动作还没有完成|正忙着|忙着呢/.test(t)) {

@@ -8,6 +8,7 @@
 //   DIR defaults: driver = $FLUFFOS_WASM or web/driver ; out = site
 import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto'; import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { genWiki } from './wiki/gen.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -18,7 +19,7 @@ export const GAMES = [
   { id: 'es2', config: 'config.es2', title: '东方故事 II', desc: 'ES2 经典武侠，众多武侠 MUD 的母本' },
   { id: 'jy', config: 'config.jy', title: '金庸群侠传', desc: '金庸小说人物与门派' },
   { id: 'xyj', config: 'config.xyj', title: '西游记 2006', desc: '西游神魔世界，数据最大，首次加载较慢' },
-  { id: 'zjmud', config: 'config.zj', title: '书剑江湖', desc: '指间争锋 MUD，图形按钮界面', zj: true },
+  { id: 'zjmud', config: 'config.zj', title: '书剑江湖', desc: '指间争锋 MUD，图形按钮界面', zj: true, wiki: true },
   { id: 'zjmudhell', config: 'config.zj', title: '指尖MUD', desc: '指间协议，地狱家族地图，图形按钮界面', zj: true },
   { id: 'zjdyzj', config: 'config.zj', title: '终极地狱·指间版', desc: '地狱无门，投胎转世选品质，图形按钮界面', zj: true },
   { id: 'shujian3', config: 'config.zj', title: '书剑3', desc: '独立书剑代码，副本与帮会，图形按钮界面', zj: true },
@@ -119,6 +120,8 @@ function patchZjmud(dir, g) {
   if (!html.includes('<script src="main.js" ></script>')) throw new Error(g.id + ': main.js tag not found');
   html = html.replace('<script src="main.js" ></script>', '<script src="main.js" ></script>\n  <script src="../minimap.js"></script>');
   html = addPwaHead(html, g);
+  if (g.wiki) html = html.replace('<a href="../" style="color:#9cf;margin-left:4px">换游戏</a>',
+    '<a href="../wiki/?g=' + g.id + '" style="color:#9cf;margin-left:4px">百科</a> <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>');
   fs.writeFileSync(fi, html);
 }
 
@@ -135,7 +138,27 @@ for (const g of GAMES) {
   execFileSync(process.execPath, [path.join(root, 'web/pack.mjs'), path.join(root, 'games', g.id, 'mudlib'), path.join(dst, 'mudlib.bin.gz')], { stdio: 'inherit' });
 }
 
+// ---------- offline wiki: data read out of the running mudlib (web/wiki/gen.mjs) ----------
+{
+  const wdir = path.join(out, 'wiki');
+  fs.mkdirSync(wdir, { recursive: true });
+  for (const f of ['wiki.js', 'wiki.css']) fs.copyFileSync(path.join(root, 'web/wiki', f), path.join(wdir, f));
+  const list = [];
+  for (const g of GAMES.filter((x) => x.wiki)) {
+    const t0 = Date.now();
+    const data = await genWiki({ driverDir, mudlibDir: path.join(root, 'games', g.id, 'mudlib'), config: g.config, title: g.title });
+    fs.writeFileSync(path.join(wdir, g.id + '.json'), JSON.stringify(data));
+    list.push({ id: g.id, title: g.title });
+    console.log(`wiki ${g.id}: ${Object.keys(data.skills).length} skills, ${Object.keys(data.npcs).length} npcs, ${Object.keys(data.items).length} items, ${Object.keys(data.rooms).length} rooms (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  }
+  const html = fs.readFileSync(path.join(root, 'web/wiki/index.html'), 'utf8')
+    .replace('<!--__HEAD__-->', pwaHead('index', '游戏百科', '../').replace('href="manifest.webmanifest"', 'href="../manifest.webmanifest"') +
+      `<script>window.WIKI_GAMES = ${JSON.stringify(list)};</script>`);
+  fs.writeFileSync(path.join(wdir, 'index.html'), html);
+}
+
 const cards = GAMES.map((g) => `    <a class="card" href="${g.id}/"><h2>${g.title}</h2><p>${g.desc}</p></a>`).join('\n');
+const wikiLinks = GAMES.filter((g) => g.wiki).map((g) => `<a href="wiki/?g=${g.id}">${g.title}</a>`).join('、');
 fs.writeFileSync(path.join(out, 'index.html'), `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -151,6 +174,7 @@ ${pwaHead('index', '中文MUD', '')}<title>中文 MUD 单机版</title>
   .card:hover { border-color: #6af; }
   .card h2 { margin: 0 0 6px; font-size: 18px; color: #9cf; }
   .card p { margin: 0; font-size: 13px; color: #aaa; }
+  .wiki { margin-top: 18px; padding: 12px 16px; border: 1px solid #2c3c4c; border-radius: 8px; background: #161c22; font-size: 14px; }
   footer { margin-top: 32px; font-size: 12px; color: #777; line-height: 1.6; }
   a { color: #9cf; }
 </style>
@@ -162,6 +186,7 @@ ${pwaHead('index', '中文MUD', '')}<title>中文 MUD 单机版</title>
   <div class="grid">
 ${cards}
   </div>
+  <div class="wiki">离线百科：${wikiLinks}。查武功、师父、物品、地点和走法，不用进游戏，没网也能看。</div>
   <footer>
     单机模式下只有你一个玩家，聊天频道没有其他人。清除浏览器数据会删除存档，请定期导出。<br>
     手机上可以「添加到主屏幕」：之后像 App 一样全屏打开，玩过的游戏没网也能玩；在 iPhone 上这样还能避免 Safari 长时间不访问后自动清掉存档。<br>

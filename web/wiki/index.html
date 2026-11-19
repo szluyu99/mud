@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>百科</title>
+<link rel="stylesheet" href="wiki.css">
+<!--__HEAD__-->
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1><a href="#/" id="home">百科</a></h1>
+    <select id="game" aria-label="游戏"></select>
+    <input id="q" type="search" placeholder="搜武功、人物、物品、地点" autocomplete="off">
+    <a id="play" href="../">进游戏</a>
+  </div>
+  <nav></nav>
+</header>
+<main></main>
+<script src="wiki.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js').then(function () {
+  return navigator.serviceWorker.ready;
+}).then(function (r) { if (r.active) r.active.postMessage({ type: 'cache-game', game: 'wiki' }); }).catch(function () {});
+</script>
+</body>
+</html>
