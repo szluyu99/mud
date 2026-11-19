@@ -88,8 +88,20 @@ div#hudong {
 div#map {
 	font-size: 8px;
 	line-height: 140%;
-	width:80%;
+	width:100%;
 	overflow:auto;
+	/* 地图是等宽字符拼的，长行不应换行（换了图就变形），
+	   但也不该为此冒出一条横向滚动条：允许横向滚动、隐藏滚动条外观。 */
+	scrollbar-width: none;        /* Firefox */
+	-ms-overflow-style: none;     /* 旧 Edge/IE */
+}
+
+/* 地图里的横向滚动条藏起来：Chrome/Safari 用伪元素 */
+div#map::-webkit-scrollbar,
+div.ui-dialog div#map::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+	display: none;
 }
 
 div#acts {

@@ -495,10 +495,46 @@ function writeToMAP(str) {
 		out.append('<span class="map">'+ strs[i]+ '</span>');
 		if(i<(strs.length-1)) out.append('<br>');
 	}
+	// 地图是等宽字符拼的整幅图，横向被裁掉就看不全了。
+	// 宽度不够时按比例把字号缩小一点，让整张图完整放进来；缩到下限还超才允许横向滚动。
+	(function fitMapWidth() {
+		var el = $('div#map')[0];
+		if (!el) return;
+		var base = 8;               // 原始字号
+		var minFont = 5;            // 再小就糊了，保留横向滚动
+		// span.map 在 CSS 里自带 8px 字号，只改容器的字号对子元素无效，
+		// 必须把字号直接压到每个 span 上。
+		var spans = el.querySelectorAll('span.map');
+		var setFont = function (px) {
+			el.style.fontSize = px + 'px';
+			for (var i = 0; i < spans.length; i++) spans[i].style.fontSize = px + 'px';
+		};
+		setFont(base);
+		var guard = 0;
+		while (el.scrollWidth > el.clientWidth + 1 && base > minFont && guard++ < 12) {
+			base = base - 0.5;
+			setFont(base);
+		}
+	})();
+
+	// 让地图按内容自然撑开；只有真的超过可用高度时才限高并允许滚动。
+	// 这里必须减掉对话框自身占的地方（距顶部 72px + 标题栏 + 内边距 + 底部余量），
+	// 否则算出来的高度偏大，内容边缘会多出几个像素，产生那条“只有一点点”的滚动条。
 	$('div#map').css('height','auto');
-	if($('div#map').height()>($(window).height()-longob.height()-100-hpsob.height()))
-	{
-		$('div#map').height($(window).height()-longob.height()-100-hpsob.height());
+	var dlg = $('div#map').closest('.ui-dialog');
+	var chromeH = 0;
+	if (dlg.length) {
+		var content = $('div#map')[0];
+		var cs = window.getComputedStyle(content);
+		var padY = parseFloat(cs.paddingTop || 0) + parseFloat(cs.paddingBottom || 0);
+		var titleH = dlg.find('.ui-dialog-titlebar').outerHeight(true) || 0;
+		chromeH = titleH + padY + 72 + 16; // 72 是 position 的 top，16 留一点呼吸空间
+	} else {
+		chromeH = 100;
+	}
+	var avail = $(window).height() - longob.height() - hpsob.height() - chromeH;
+	if ($('div#map')[0].scrollHeight > avail) {
+		$('div#map').height(avail);
 	}
 };
 
