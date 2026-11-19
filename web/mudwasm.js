@@ -18,6 +18,32 @@
   const dbgDec = new TextDecoder();
 
   let M = null, bootPromise = null, game = 'mud';
+  // where this script was loaded from: sw.js sits next to it at the site root
+  const SELF_URL = (document.currentScript && document.currentScript.src) || location.href;
+
+  // ---------- offline + storage ----------
+  // Register the service worker (offline play, instant second load) and ask the
+  // browser to keep our storage. Without persist(), Safari wipes a site's
+  // IndexedDB -- i.e. every save -- after 7 days without a visit, and Android
+  // Chrome may evict it under storage pressure. Saves opened from a home-screen
+  // icon are exempt from Safari's 7-day rule as well.
+  function setupOffline() {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+      navigator.serviceWorker.register(new URL('sw.js', SELF_URL)).catch((e) => console.warn('[mudwasm] service worker:', e));
+      // make sure this game's files end up in the offline cache even on the first visit
+      navigator.serviceWorker.ready.then((reg) => reg.active && reg.active.postMessage({ type: 'cache-game', game })).catch(() => {});
+    }
+    requestPersist();
+  }
+  let persistState = 'unknown';
+  async function requestPersist() {
+    try {
+      if (!navigator.storage || !navigator.storage.persist) { persistState = 'unsupported'; return persistState; }
+      persistState = (await navigator.storage.persisted()) || (await navigator.storage.persist()) ? 'granted' : 'denied';
+    } catch (e) { persistState = 'unknown'; }
+    if (DEBUG) console.log('[mudwasm] storage persist:', persistState);
+    return persistState;
+  }
   const sockets = new Map();
   const waiting = [];
 
@@ -140,6 +166,7 @@
   function start(opts) {
     if (bootPromise) return bootPromise;
     game = opts.game;
+    setupOffline();
     bootPromise = (async () => {
       status('正在加载…');
       const base = opts.base || '';
@@ -249,6 +276,8 @@
         for (const x of q) if (this.readyState === 1) M.ccall('fluffos_input', null, ['number', 'array', 'number'], [this.id, x, x.length]);
         // persist shortly after player input (saves usually follow a command)
         clearTimeout(syncSoon); syncSoon = setTimeout(saveAndSync, 2000);
+        // Chrome grants persistent storage more readily once the user has engaged
+        if (persistState !== 'granted') requestPersist();
       }, 0);
     }
     close() {
@@ -315,5 +344,6 @@
     location.reload();
   }
 
-  window.MudWasm = { start, Socket, exportSave, importSave, resetSave, sync, setWizard };
+  window.MudWasm = { start, Socket, exportSave, importSave, resetSave, sync, setWizard,
+    storageStatus: () => persistState, requestPersist };
 })();

@@ -6,7 +6,7 @@
 //   site/<game>/mudlib.bin.gz  packed mudlib
 // usage: node web/build.mjs [--driver DIR] [--out DIR]
 //   DIR defaults: driver = $FLUFFOS_WASM or web/driver ; out = site
-import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process';
+import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto'; import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,6 +42,37 @@ const head = (g) =>
   `<script src="../driver/fluffos.js"></script>\n<script src="../mudwasm.js"></script>\n` +
   `<script>MudWasm.start({ game: ${JSON.stringify(g.id)}, config: ${JSON.stringify(g.config)} });</script>\n`;
 
+// ---------- PWA: per-game manifest + icons + head tags ----------
+// Each game is its own installable app (own home-screen icon, opens straight into
+// that game). start_url/scope are relative to the manifest, so the site works under
+// any path (GitHub Pages serves it at /mud/).
+const ICONS = path.join(root, 'web/icons');
+fs.mkdirSync(path.join(out, 'icons'), { recursive: true });
+for (const f of fs.readdirSync(ICONS)) if (f.endsWith('.png')) fs.copyFileSync(path.join(ICONS, f), path.join(out, 'icons', f));
+
+function writeManifest(dir, id, name, shortName, iconBase) {
+  fs.writeFileSync(path.join(dir, 'manifest.webmanifest'), JSON.stringify({
+    name, short_name: shortName, lang: 'zh-CN',
+    start_url: './', scope: './', display: 'standalone', orientation: 'any',
+    background_color: '#000000', theme_color: '#000000',
+    icons: [192, 512].map((n) => ({ src: `${iconBase}icons/${id}-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' })),
+  }, null, 2));
+}
+const pwaHead = (id, title, iconBase) =>
+  `<link rel="manifest" href="manifest.webmanifest">\n` +
+  `<meta name="theme-color" content="#000000">\n` +
+  `<meta name="apple-mobile-web-app-capable" content="yes">\n` +
+  `<meta name="mobile-web-app-capable" content="yes">\n` +
+  `<meta name="apple-mobile-web-app-status-bar-style" content="black">\n` +
+  `<meta name="apple-mobile-web-app-title" content="${title}">\n` +
+  `<link rel="apple-touch-icon" href="${iconBase}icons/${id}-180.png">\n`;
+// insert right after <head>; drop the game's own duplicates of the same tags first
+function addPwaHead(html, g) {
+  html = html.replace(/\s*<meta name="apple-mobile-web-app-(capable|status-bar-style)"[^>]*>/g, '');
+  if (!/<head>/i.test(html)) throw new Error(g.id + ': <head> not found');
+  return html.replace(/<head>/i, (m) => m + '\n' + pwaHead(g.id, g.title, '../'));
+}
+
 const toolbar = `
 <div id="mudwasm-bar" style="position:fixed;right:4px;top:4px;z-index:9999;font:12px sans-serif;opacity:.8;text-align:right">
   <button onclick="var p=document.getElementById('mudwasm-panel');p.style.display=p.style.display=='none'?'block':'none'" title="存档 / 换游戏">存档</button>
@@ -67,7 +98,7 @@ function patchTerminalClient(html, g) {
   rep('this.ws = new WebSocket(wsUrl, protocols);', 'this.ws = new MudWasm.Socket();');
   rep('<script src="vendor/xterm.js"></script>', head(g) + '<script src="vendor/xterm.js"></script>');
   rep('</body>', toolbar + '\n</body>');
-  return html;
+  return addPwaHead(html, g);
 }
 
 function patchZjmud(dir, g) {
@@ -83,6 +114,7 @@ function patchZjmud(dir, g) {
   if (!html.includes('<script src="sockshim.js"></script>')) throw new Error(g.id + ': index pattern not found');
   html = html.replace('<script src="sockshim.js"></script>', head(g) + '<script src="sockshim.js"></script>');
   html = html.replace('</body>', toolbar + '\n</body>');
+  html = addPwaHead(html, g);
   fs.writeFileSync(fi, html);
 }
 
@@ -90,6 +122,7 @@ for (const g of GAMES) {
   const dst = path.join(out, g.id);
   fs.cpSync(path.join(root, 'games', g.id, 'www'), dst, { recursive: true });
   for (const junk of ['AGENTS.md', 'README.md', 'wasm']) fs.rmSync(path.join(dst, junk), { recursive: true, force: true });
+  writeManifest(dst, g.id, g.title + ' · 单机版', g.title, '../');
   if (g.zj) patchZjmud(dst, g);
   else {
     const fi = path.join(dst, 'index.html');
@@ -104,7 +137,7 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>中文 MUD 单机版</title>
+${pwaHead('index', '中文MUD', '')}<title>中文 MUD 单机版</title>
 <style>
   body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #ddd; }
   main { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
@@ -127,10 +160,32 @@ ${cards}
   </div>
   <footer>
     单机模式下只有你一个玩家，聊天频道没有其他人。清除浏览器数据会删除存档，请定期导出。<br>
+    手机上可以「添加到主屏幕」：之后像 App 一样全屏打开，玩过的游戏没网也能玩；在 iPhone 上这样还能避免 Safari 长时间不访问后自动清掉存档。<br>
     源码与说明：<a href="https://github.com/szluyu99/mud">github.com/szluyu99/mud</a>。游戏 mudlib 版权归原作者所有。
   </footer>
 </main>
 </body>
 </html>
 `);
+writeManifest(out, 'index', '中文 MUD 单机版', '中文MUD', '');
+// the picker registers the worker too, so installing from the picker caches the shared files
+{
+  const fi = path.join(out, 'index.html');
+  fs.writeFileSync(fi, fs.readFileSync(fi, 'utf8').replace('</body>',
+    `<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});` +
+    `if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});</script>\n</body>`));
+}
+
+// ---------- service worker with a content-hash manifest ----------
+const manifest = {};
+(function walk(d, rel) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    const p = path.join(d, e.name), r = rel ? rel + '/' + e.name : e.name;
+    if (e.isDirectory()) walk(p, r);
+    else if (e.isFile() && r !== 'sw.js' && r !== '.nojekyll') manifest[r] = crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex').slice(0, 16);
+  }
+})(out, '');
+fs.writeFileSync(path.join(out, 'sw.js'),
+  fs.readFileSync(path.join(root, 'web/sw.js'), 'utf8').replace('__MANIFEST__', JSON.stringify(manifest)));
+console.log('service worker covers', Object.keys(manifest).length, 'files');
 console.log('site built at', out);
