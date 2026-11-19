@@ -1,6 +1,6 @@
 ﻿body {
-	/* 刘海屏：左右留出圆角和刘海，底部留出小白条（Home 指示条），
-	   否则最底下的 常用/技能/系统 那排按钮会被手势条压住。 */
+	/* 刘海屏：避开顶部刘海和底部小白条，否则最下面的菜单会被手势条压住。
+	   未适配的机型上 env() 取 0，效果与原来完全一致。 */
 	margin-left: calc(2px + env(safe-area-inset-left, 0px));
 	margin-top: env(safe-area-inset-top, 0px);
 	margin-right: calc(2px + env(safe-area-inset-right, 0px));
@@ -14,16 +14,14 @@
 
 div#chat {
 	padding:2px;
-	box-sizing: border-box;
-	width:100%;
+	width:99%;
 	height:40px;
 	overflow:auto;
 	border-bottom:1px solid rgba(150,150,150,0.5);
 }
 
 div#long {
-	box-sizing: border-box;
-	width:100%;
+	width:99%;
 	padding-top:2px;
 	padding-left:2px;
 	padding-bottom:2px;
@@ -32,8 +30,7 @@ div#long {
 }
 
 div#tbar {
-	box-sizing: border-box;
-	width:100%;
+	width:99%;
 	padding-top:3px;
 	padding-left:4px;
 	padding-bottom:3px;
@@ -71,10 +68,9 @@ div#hps {
 
 div#menu {
 	float:left;
-	width: 100%;
-	box-sizing: border-box;
+	width: 101%;
 	height:38px;
-	margin-left: 0;
+	margin-left: -1px;
 	margin-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -138,27 +134,30 @@ input{
 	border: 1px solid #888; 
 	-webkit-appearance:none;
 	height: 35px;
-	touch-action: manipulation;
 	color: #ddd;
 	width:99%;
 	background-color: rgba(200,200,200,0.1);
 	border-radius:3px; 
-	font-size: 16px; /* iOS 上小于 16px 的输入框获得焦点会自动放大整个页面 */
 }
 
-/* jQuery UI 自带 .ui-widget input{font-size:1em} 优先级比单个 input 高，
-   登录/注册/指令框都在 .ui-dialog 里，会退回 12px 从而触发 iOS 自动放大。
-   这里用同等结构的选择器把字号钉回 16px。 */
-.ui-widget input,
-.ui-widget textarea,
-.ui-widget select,
-.ui-widget button {
+/* iOS 上小于 16px 的输入框一聚焦就会放大整个页面。
+   只给真正要打字的输入框设 16px——绝不能写成通用 input{font-size:16px}，
+   否则底部那排 常用/技能/系统 按钮（也是 input）会跟着变大，
+   把菜单表格撑宽、撑出横向滚动条。 */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+textarea {
 	font-size: 16px;
 }
 
-.ui-dialog .ui-dialog-buttonpane button,
-.ui-dialog input.ui-button {
-	font-size: 14px;
+/* jQuery UI 自带 .ui-widget input{font-size:1em} 优先级更高，
+   登录/注册/指令框都在 .ui-dialog 里会退回 12px，这里钉回 16px。 */
+.ui-widget input[type="text"],
+.ui-widget input[type="password"],
+.ui-widget input[type="email"],
+.ui-widget textarea {
+	font-size: 16px;
 }
 
 hr{
@@ -172,8 +171,7 @@ button{
 	-webkit-appearance:none;
 	color: #ccc;
 	vertical-align:middle;
-	font-size: 13px; 
-	touch-action: manipulation;
+	font-size: 10px; 
 	margin: 1px;
 	padding: 0px;
 	width:99%;
@@ -190,7 +188,6 @@ input:active{
 }
 
 input.newbt {
-	touch-action: manipulation;
 	white-space:pre;
 	word-wrap: break-word;
 	font-size: 11px; 
@@ -208,8 +205,7 @@ input.hpbt {
 	white-space:pre;
 	word-wrap: break-word;
 	color: #fff; 
-	font-size: 11px; 
-	touch-action: manipulation;
+	font-size: 9px; 
 	vertical-align:middle;
 	padding:0px;
 	margin: 0px;
@@ -233,13 +229,11 @@ input.menubt {
 	color: #eee; 
 	height: 38px; 
 	width:100%;
-	touch-action: manipulation;
 	background: #666
 	border-radius:0px; 
 	background-color: #333;
 }
 input.ucmds {
-	touch-action: manipulation;
 	border: 1px solid #888; 
 	height: auto;
 	width:auto;
@@ -286,49 +280,4 @@ span.map {
 span.chat {
 	white-space:nowrap;
 	font-size: 12px; 
-}
-/* ---------- 手机端点击区域 ----------
-   房间里的人物、出口、顶栏按钮都是服务端下发、内联写死高度的，
-   在手机上（23~30px）远小于手指能点准的尺寸。
-   height 是“期望高度”，min-height 是硬下限，这里用 min-height 统一抬起来，
-   不用去改每一处拼接 HTML 的地方。 */
-div#acts button,
-div#obj button,
-div#exits button,
-div#tbar button,
-div#mycmds button {
-	min-height: 40px;
-}
-
-div#obj button {
-	font-size: 13px;
-}
-
-div#exits button {
-	font-size: 13px;
-	line-height: 1.15;
-}
-
-/* 顶栏（房间名 + 飞行/附近）本身只有 29px 高。
-   按钮强制 40px 会顶出边界，所以让顶栏自己长高，而不是把按钮压小。 */
-div#tbar {
-	min-height: 40px;
-}
-div#tbar button {
-	min-height: 32px;
-	height: auto;
-	padding: 6px 4px;
-}
-
-/* 状态格（气血/内力…）是信息展示，点击进入属性面板。
-   文字本身保持小号以免占满一屏，但可点区域要够。 */
-div#hps input.hpbt {
-	min-height: 26px;
-}
-
-/* 横屏时两侧留白过多，放宽内容区 */
-@media (orientation: landscape) and (max-height: 480px) {
-	div#chat { height: 28px; }
-	div#mleft { width: 15%; }
-	div#mright { width: 84%; }
 }
