@@ -267,6 +267,14 @@ int start(object me)
 
 mapping query_state(object me) { return me->query_temp("autoquest"); }
 
+// 给自动修炼用：门派掌门表，和按同样规则（步行 / 飞行）走到某个房间
+mapping query_masters() { return masters; }
+int walk_to(object me, mapping s, string goal)
+{
+	if (! mapp(s["block"])) s["block"] = ([ ]);
+	return go_to(me, s, goal);
+}
+
 // 战斗中的处理
 void fight(object me, mapping s, object target)
 {

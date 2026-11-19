@@ -36,6 +36,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'driver'), { recursive: true });
 for (const f of ['fluffos.js', 'fluffos.wasm']) fs.copyFileSync(path.join(driverDir, f), path.join(out, 'driver', f));
 fs.copyFileSync(path.join(root, 'web/mudwasm.js'), path.join(out, 'mudwasm.js'));
+fs.copyFileSync(path.join(root, 'web/minimap.js'), path.join(out, 'minimap.js'));
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 
 const head = (g) =>
@@ -114,6 +115,9 @@ function patchZjmud(dir, g) {
   if (!html.includes('<script src="sockshim.js"></script>')) throw new Error(g.id + ': index pattern not found');
   html = html.replace('<script src="sockshim.js"></script>', head(g) + '<script src="sockshim.js"></script>');
   html = html.replace('</body>', toolbar + '\n</body>');
+  // 小地图：挂在客户端的 writeToST / writeToEX 上，必须在 main.js 之后加载
+  if (!html.includes('<script src="main.js" ></script>')) throw new Error(g.id + ': main.js tag not found');
+  html = html.replace('<script src="main.js" ></script>', '<script src="main.js" ></script>\n  <script src="../minimap.js"></script>');
   html = addPwaHead(html, g);
   fs.writeFileSync(fi, html);
 }
