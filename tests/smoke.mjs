@@ -53,7 +53,9 @@ async function newCharacter(page, g) {
   await page.waitForFunction(() => !!document.querySelector('input[value="注册账号"]'), null, { timeout: 180000 });
   await page.waitForTimeout(600);
   await page.evaluate(() => document.querySelector('input[value="注册账号"]').click()); await page.waitForTimeout(600);
-  await page.fill('input#id', 't' + Math.random().toString(36).slice(2, 8));
+  const id = 't' + Math.random().toString(36).slice(2, 8);
+  page.charId = id;
+  await page.fill('input#id', id);
   await page.fill('input#pass', 'Test1234'); await page.fill('input#repass', 'Test1234');
   await page.evaluate(() => document.querySelector('button#register').click());
   await until(page, () => !!document.querySelector('input#nicheng'), 15000);
@@ -182,6 +184,27 @@ async function zjmudExtras(page, ctx) {
   // 动作带人走：百丈涧 zou tiesuo → 仙愁门（fly lj 落在百丈涧）
   await send(page, '去仙愁门');
   check('zjmud: "去仙愁门" uses zou tiesuo', await waitRoom(page, '仙愁门', 30000), await room(page));
+  // 普通物品随存档保留：设为巫师后变出长剑、布衣、酒袋、帐篷，手持长剑、穿上布衣、包子放进帐篷，
+  // 存档并刷新页面后这些东西都还在，长剑仍在手上
+  await page.evaluate((id) => MudWasm.setWizard(id, 'admin'), page.charId).catch(() => {});
+  await page.waitForTimeout(3000);
+  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
+  await page.waitForTimeout(3000);
+  for (const c of ['clone /clone/weapon/changjian', 'clone /clone/cloth/cloth', 'clone /clone/food/jiudai', 'clone /clone/misc/sleepbag',
+    'clone /clone/food/baozi', 'clone /clone/questob/letter', 'wield jian', 'wear cloth', 'put baozi in sleepbag']) { await send(page, c); await page.waitForTimeout(900); }
+  await page.evaluate(async () => { await MudWasm.lpc('mudwasm_save', []); await new Promise((r) => setTimeout(r, 500)); await MudWasm.sync(); });
+  await page.reload({ waitUntil: 'load' });
+  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
+  await page.waitForTimeout(3000);
+  const outTxt = () => page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0]);
+  await send(page, 'i'); await page.waitForTimeout(1500);
+  const inv = await page.evaluate(() => document.querySelector('div#hudong')?.innerText || '');
+  await send(page, 'look jian'); await page.waitForTimeout(1200);
+  const wielded = /放下 长剑|unwield/.test(await page.evaluate(() => document.body.innerHTML));
+  await send(page, 'get baozi from sleepbag'); await page.waitForTimeout(1200);
+  const tail = (await outTxt()).slice(-600);
+  check('zjmud: items kept after reload (长剑 布衣 酒袋 帐篷, not 师门信件)', /长剑/.test(inv) && /布衣/.test(inv) && /酒袋/.test(inv) && /帐篷/.test(inv) && !/师门信件/.test(inv), inv.slice(0, 200));
+  check('zjmud: 长剑 still wielded, 包子 still in 帐篷', wielded && /从帐篷中拿出/.test(tail), tail.slice(-160));
 }
 
 // ---------- stand-alone wiki pages ----------
