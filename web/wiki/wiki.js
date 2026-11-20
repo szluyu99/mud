@@ -250,6 +250,7 @@
     return '<h2>' + esc(r.s) + '</h2><div class="muted">' + link('region', regionOf(f), regionName(regionOf(f))) + (r.nf ? ' · 禁止战斗' : '') + '</div>' +
       section('怎么去', goBox(f)) +
       section('出口', ex.length ? '<div class="exits">' + ex.map(([d, to]) => esc(DIRS[d] || d) + ' ' + roomLink(to)).join('<br>') + '</div>' : '') +
+      section('特殊出入', (r.x || []).length ? '<div class="exits">' + r.x.map((x) => '<code>' + esc(x.c) + '</code>' + (x.d ? ' 后往' + esc(DIRS[x.d] || x.d) : '') + ' → ' + roomLink(x.t)).join('<br>') + '</div>' : '') +
       section('人物', who.length ? '<div class="tags">' + [...new Set(who)].map((o) => npcLink(o).replace('<a ', '<a class="tag" ')).join('') + '</div>' : '') +
       section('物品', what.length ? '<div class="tags">' + [...new Set(what)].map((o) => itemLink(o).replace('<a ', '<a class="tag" ')).join('') + '</div>' : '');
   }
@@ -277,7 +278,63 @@
   const notFound = () => '<p class="muted">没有这个条目。</p>';
 
   // ---------- router ----------
-  const TABS = { '': '首页', skills: '武功', fams: '门派', npcs: '人物', items: '物品', rooms: '地点' };
+  // 「我的角色」：打开游戏并登录后，从游戏里读出当前角色，和百科数据对照
+  const ATTR = [['int', '悟性'], ['str', '膂力'], ['con', '根骨'], ['dex', '身法'], ['per', '容貌'], ['kar', '福缘']];
+  function canJoin(n, st) {
+    if (!n.teach || !n.fam) return null;
+    if (st.fam && st.fam !== n.fam.n) return null;            // 已经有别的门派
+    let bad = 0, known = 0;
+    for (const r of (n.rc && n.rc.req) || []) { const ok = reqOk(st, r); if (ok !== null) known++; if (ok === false) bad++; }
+    return known ? bad : -1;                                   // -1：源码里没读出可比对的条件
+  }
+  function mePage() {
+    const st = STATS;
+    if (!st) return '<h2>我的角色</h2><div class="muted" id="mewait">' + (statsAt && Date.now() - statsAt > 2500
+      ? '没连上游戏。先打开游戏页面并登录角色，再回到这里（或在游戏里点「百科」）。'
+      : '正在向游戏读取角色…') + '</div>';
+    const s = st.s || {}, p = st.p || {};
+    const master = st.master && Object.entries(D.npcs).find(([, n]) => n.id === st.master && n.fam && n.fam.n === st.fam);
+    const pct = (a, b) => b ? Math.round(a * 100 / b) + '%' : '';
+    let h = '<h2>' + esc(st.name || '') + (st.nick ? ' <span class="muted">「' + esc(st.nick) + '」</span>' : '') + '</h2>' +
+      (st.title ? '<div class="muted">' + esc(st.title) + '</div>' : '') +
+      kv([['门派', st.fam ? esc(st.fam) + (s['family/generation'] ? '第 ' + s['family/generation'] + ' 代' : '') : '无门无派'],
+        ['师父', master ? npcLink(master[0]) : st.master ? esc(st.master) : ''],
+        ['身份', st.class ? esc(st.class) : ''], ['性别', esc(st.gender || '')], ['年龄', p.age ? p.age + ' 岁' : ''],
+        ['所在', st.room && D.rooms[st.room] ? roomLink(st.room) : ''],
+        ['经验', p.combat_exp], ['潜能', s.potential != null ? Math.max(0, s.potential - (s.learned_points || 0)) : ''],
+        ['神', p.shen > 0 ? '正 ' + p.shen : p.shen < 0 ? '邪 ' + -p.shen : '0'],
+        ['气血', s.qi + ' / ' + s.eff_qi + ' / ' + s.max_qi], ['精神', s.jing + ' / ' + s.eff_jing + ' / ' + s.max_jing],
+        ['内力', (s.neili || 0) + ' / ' + (p.max_neili || 0)], ['精力', (s.jingli || 0) + ' / ' + (p.max_jingli || 0)],
+        ['食物', s.food], ['饮水', s.water], ['存款', s.balance ? money(s.balance) : '']]);
+    h += section('天赋', kv(ATTR.map(([k, t]) => [t, (st.a || {})[k]])));
+    const ks = Object.keys(st.b || {}).sort((a, b) => st.b[b] - st.b[a]);
+    const used = {};
+    for (const [base, sk] of Object.entries(st.map || {})) (used[sk] ||= []).push(base);
+    h += section('武功（' + ks.length + ' 种）', ks.length ? '<table>' + ks.map((k) => '<tr><td>' + (D.skills[k] ? skLink(k) : esc(k)) +
+      (used[k] ? ' <span class="muted">激发为 ' + used[k].map((b) => D.skills[b] ? esc(D.skills[b].name) : esc(b)).join('、') + '</span>' : '') +
+      '</td><td class="n">' + st.b[k] + ' 级' + (st.e && st.e[k] !== st.b[k] ? ' <span class="muted">（有效 ' + st.e[k] + '）</span>' : '') + '</td></tr>').join('') + '</table>' : '<div class="muted">还没有学会任何武功。</div>');
+    // 能拜的师父：门派对得上，读得出的条件按满足的条数排
+    const cands = [];
+    for (const [f, n] of Object.entries(D.npcs)) {
+      if (master && f === master[0]) continue;
+      const bad = canJoin(n, st);
+      if (bad === null) continue;
+      cands.push([f, n, bad]);
+    }
+    // 经验低的师父排前面：新手先看得到够得着的
+    cands.sort((a, b) => a[1].exp - b[1].exp);
+    const ok = cands.filter((c) => c[2] === 0), near = cands.filter((c) => c[2] === 1), unk = cands.filter((c) => c[2] === -1);
+    const line = ([f, n, bad]) => row('#/npc/' + enc(f), n.name, n.fam.n + ' 第 ' + n.fam.g + ' 代', bad ? '还差 ' + bad + ' 条' : (n.at[0] ? roomLabel(n.at[0]) : ''));
+    const more = (l, n) => (l.length > n ? '<div class="muted">按经验从低到高，只列前 ' + n + ' 位。</div>' : '');
+    h += section((st.fam ? '本门' : '') + '条件都满足的师父（' + ok.length + '）',
+      ok.length ? rows(ok.slice(0, 30).map(line)) + more(ok, 30) : '<div class="muted">没有。</div>') +
+      (near.length ? section('只差一条的师父（' + near.length + '）', rows(near.slice(0, 20).map(line)) + more(near, 20)) : '') +
+      (unk.length ? section('没读出条件的师父（' + unk.length + '）', rows(unk.slice(0, 20).map(line)) + more(unk, 20)) : '') +
+      '<div class="muted">只按源码里读得出的条件判断。师父可能还有别的要求（比如先找低辈分的弟子拜师），点进去看原话。</div>';
+    return h + '<p class="muted">数据在你打开这一页时从游戏里读出；<a href="#/me" data-reload="1">刷新</a>。</p>';
+  }
+
+  const TABS = { '': '首页', me: '我的角色', skills: '武功', fams: '门派', npcs: '人物', items: '物品', rooms: '地点' };
   const TAB_OF = { skill: 'skills', fam: 'fams', npc: 'npcs', item: 'items', room: 'rooms', region: 'rooms' };
   function route() {
     if (!D) return;
@@ -299,6 +356,11 @@
       case 'region': html = region(key, page); break;
       case 'room': html = room(key); break;
       case 'fams': html = famsPage(); break;
+      case 'me':
+        html = mePage();
+        askStats(() => { if (/^#\/me\b/.test(location.hash)) main.innerHTML = mePage(); }, true);
+        setTimeout(() => { const w = document.getElementById('mewait'); if (w && !STATS) main.innerHTML = mePage(); }, 2800);
+        break;
       case 'fam': html = fam(key); break;
       case 'search': {
         // 名字正好对上唯一一条（游戏里点「查百科」时常见）：直接打开那一页
@@ -321,8 +383,8 @@
   const EMBED = /[?&]embed=1\b/.test(location.search);
   // 向打开着的游戏要当前角色的属性和技能（嵌在游戏里用 postMessage，单独的百科页用 BroadcastChannel）
   let STATS = null, statsAt = 0;
-  function askStats(done) {
-    if (Date.now() - statsAt < 3000) return;
+  function askStats(done, force) {
+    if (!force && Date.now() - statsAt < 3000) return;
     statsAt = Date.now();
     const id = Math.random().toString(36).slice(2);
     const take = (d) => { if (d && d.type === 'wiki-stats-reply' && d.id === id && d.stats) { STATS = d.stats; done(); } };
@@ -385,6 +447,7 @@
     main.addEventListener('click', (e) => {
       const g = e.target.closest('button[data-go]');
       if (g) { sendGo(g); return; }
+      if (e.target.closest('a[data-reload]')) { e.preventDefault(); STATS = null; statsAt = 0; route(); return; }
       const b = e.target.closest('button[data-copy]');
       if (!b) return;
       const txt = b.dataset.copy;

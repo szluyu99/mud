@@ -101,6 +101,8 @@ async function zjmudExtras(page, ctx) {
   for (const c of ['east', 'out', 'pianshu jhx', 'wash', 'born 扬州人氏']) { await send(page, c); await page.waitForTimeout(2000); }
   check('zjmud: born in 宝昌客栈', await waitRoom(page, '宝昌客栈', 8000), await room(page));
   check('zjmud: minimap has wiki data', await until(page, () => MudMiniMap.wikiReady(), 15000));
+  const bar = await page.evaluate(() => [...document.querySelectorAll('#mudwasm-bar > button')].map((b) => [b.textContent, b.getBoundingClientRect().height]));
+  check('zjmud: toolbar has 百科 and 存档 buttons of the same size', bar.length === 2 && bar[0][0] === '百科' && bar[0][1] === bar[1][1], bar);
   // semicolon command queue
   await send(page, 'west;south');
   check('zjmud: queued "west;south" arrives at 中央广场', await waitRoom(page, '中央广场', 10000), await room(page));
@@ -147,8 +149,24 @@ async function zjmudExtras(page, ctx) {
   await p2.evaluate((h) => { location.hash = h; }, '#/npc/' + encodeURIComponent('/kungfu/class/huashan/yue-buqun'));
   const rcOk = await until(p2, () => /还差 1 条/.test(document.getElementById('rcbox')?.innerText || ''), 8000);
   check('zjmud: wiki tab checks 拜师条件 against the character', rcOk, await p2.evaluate(() => document.getElementById('rcbox')?.innerText.slice(0, 80)));
+  // 我的角色：读出当前角色，列出能拜的师父
+  await p2.evaluate(() => { location.hash = '#/me'; });
+  const meOk = await until(p2, () => /龙飞/.test(document.querySelector('main h2')?.textContent || '') && /条件都满足的师父/.test(document.querySelector('main').innerText), 8000);
+  check('zjmud: wiki 我的角色 shows the character and masters', meOk, await p2.evaluate(() => document.querySelector('main').innerText.slice(0, 80)));
   check('zjmud: wiki tab has no page errors', !e2.length, e2);
   await p2.close();
+  // 「去 名字」：按人物找房间，走到药铺
+  await send(page, '去平一指');
+  check('zjmud: "去平一指" walks to 药铺', await waitRoom(page, '药铺', 15000), await room(page));
+  // 特殊出入：全真教大门要先敲门（knock）才开东门；道童不让俗人进，队列应停下并说明原因
+  await send(page, '去大堂一进');
+  const qz = await waitRoom(page, '全真教大门', 30000);
+  await page.waitForTimeout(6000);
+  const said = await page.evaluate(() => document.body.innerText.includes('没走成'));
+  check('zjmud: "去大堂一进" flies to 全真教大门 and knocks', qz && said, await room(page));
+  // 动作带人走：百丈涧 zou tiesuo → 仙愁门（fly lj 落在百丈涧）
+  await send(page, '去仙愁门');
+  check('zjmud: "去仙愁门" uses zou tiesuo', await waitRoom(page, '仙愁门', 30000), await room(page));
 }
 
 // ---------- stand-alone wiki pages ----------
@@ -169,6 +187,8 @@ async function zjmudExtras(page, ctx) {
   await p.fill('#q', '独孤'); await p.waitForTimeout(600);
   check('wiki: search 独孤 finds 独孤九剑', /独孤九剑/.test(await p.textContent('main')));
   check('wiki: search box 16px (no iOS zoom)', (await p.evaluate(() => getComputedStyle(document.querySelector('#q')).fontSize)) === '16px');
+  await p.evaluate(() => { location.hash = '#/room/' + encodeURIComponent('/d/quanzhen/damen'); }); await p.waitForTimeout(500);
+  check('wiki: room page lists 特殊出入 (knock)', /特殊出入[\s\S]*knock/.test(await p.textContent('main')));
   check('wiki: no page errors', !errs.length, errs);
   await ctx.close();
 }

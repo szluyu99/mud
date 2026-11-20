@@ -55,7 +55,7 @@
       const names = new Set();
       for (const k in j.npcs || {}) names.add(j.npcs[k].name);
       for (const k in j.items || {}) names.add(j.items[k].name);
-      W = { rooms: j.rooms, byT, fly: j.fly || [], names };
+      W = { rooms: j.rooms, byT, fly: j.fly || [], names, npcs: j.npcs || {}, items: j.items || {} };
       wLocate();
       if (panel) render();
     }).catch(() => { /* no wiki for this game, or offline and not cached */ });
@@ -68,6 +68,10 @@
     const was = wCur && W.rooms[wCur];
     let f = null;
     if (was && wLast && Date.now() - wLastAt < 8000 && cands.includes(was.e[wLast])) f = was.e[wLast];
+    if (!f && was && wLast && Date.now() - wLastAt < 25000) {   // 敲门后进门、钻洞、上船到岸
+      const x = (was.x || []).find((y) => (y.d ? y.d === wLast : y.c === wLast) && cands.includes(y.t));
+      if (x) f = x.t;
+    }
     if (!f && wCur && cands.includes(wCur)) f = wCur;
     if (!f && was) { const t = Object.values(was.e).filter((x) => cands.includes(x)); if (t.length === 1) f = t[0]; }
     if (!f && wLast && /^fly\s/.test(wLast)) { const p = W.fly.find((x) => 'fly ' + x.key === wLast); if (p && cands.includes(p.room)) f = p.room; }
@@ -79,17 +83,23 @@
     wCur = f;
   }
   // 百科图里从 from 到 to 的最短出口序列
+  // 房间的所有走法：普通出口 [[方向], 目标]，加上百科从源码读出的特殊动作（敲门、钻洞、上船）
+  // 特殊动作 x={c,d?,t}：有 d 的是「先 c 开门，再往 d 走」，没有 d 的是「c 直接把人带过去」
+  function wEdges(r) {
+    const out = Object.keys(r.e).map((d) => [[d], r.e[d]]);
+    for (const x of r.x || []) out.push([x.d ? [x.c, x.d] : [x.c], x.t]);
+    return out;
+  }
   function wPath(from, to) {
     if (!W || !from || from === to) return from === to ? [] : null;
     const back = { [from]: null }, q = [from];
     for (let h = 0; h < q.length && q.length < 6000; h++) {
       const r = W.rooms[q[h]];
       if (!r) continue;
-      for (const d in r.e) {
-        const t = r.e[d];
+      for (const [cmd, t] of wEdges(r)) {
         if (t in back || !W.rooms[t]) continue;
-        back[t] = [q[h], d];
-        if (t === to) { const p = []; for (let k = to; back[k]; k = back[k][0]) p.unshift(back[k][1]); return p; }
+        back[t] = [q[h], cmd];
+        if (t === to) { const p = []; for (let k = to; back[k]; k = back[k][0]) p.unshift(...back[k][1]); return p; }
         q.push(t);
       }
     }
@@ -102,11 +112,10 @@
     const back = { [from]: null }, q = [from];
     for (let h = 0; h < q.length && h < 400; h++) {
       const r = W.rooms[q[h]];
-      for (const d in r.e) {
-        const t = r.e[d];
+      for (const [cmd, t] of wEdges(r)) {
         if (t in back || !W.rooms[t]) continue;
-        back[t] = [q[h], d];
-        if (W.rooms[t].o) { const p = []; for (let k = t; back[k]; k = back[k][0]) p.unshift(back[k][1]); return p; }
+        back[t] = [q[h], cmd];
+        if (W.rooms[t].o) { const p = []; for (let k = t; back[k]; k = back[k][0]) p.unshift(...back[k][1]); return p; }
         q.push(t);
       }
     }
@@ -122,6 +131,60 @@
       p = (out || []).concat(['fly ' + r.go.fly], r.go.steps);
     }
     return p;
+  }
+  // 「去 名字」：名字可以是地点、人物或物品，走到最近的一处
+  function wTargets(name) {
+    const out = new Map();   // 房间 → 说明
+    const add = (f, why) => { if (W.rooms[f] && !out.has(f)) out.set(f, why); };
+    for (const f of W.byT[name] || []) add(f, '');
+    for (const k in W.npcs) { const n = W.npcs[k]; if (n.name === name) for (const f of n.at || []) add(f, n.name + '在这里'); }
+    for (const k in W.items) {
+      const it = W.items[k];
+      if (it.name !== name) continue;
+      for (const f of it.found || []) add(f, it.name + '在地上');
+      for (const nf of it.sold || []) for (const f of (W.npcs[nf] && W.npcs[nf].at) || []) add(f, W.npcs[nf].name + '卖' + it.name);
+      for (const nf of it.carried || []) for (const f of (W.npcs[nf] && W.npcs[nf].at) || []) add(f, W.npcs[nf].name + '身上有');
+    }
+    return out;
+  }
+  // 从当前房间算到每个房间要几步（只走路，不飞）
+  function wDist(from, limit) {
+    const dist = { [from]: 0 }, q = [from];
+    for (let h = 0; h < q.length && q.length < limit; h++) {
+      const r = W.rooms[q[h]];
+      if (!r) continue;
+      for (const [cmd, t] of wEdges(r)) if (!(t in dist) && W.rooms[t]) { dist[t] = dist[q[h]] + cmd.length; q.push(t); }
+    }
+    return dist;
+  }
+  function wGoto(name) {
+    let ts = wTargets(name);
+    if (!ts.size) {   // 没有完全同名的，再试名字里包含这几个字的（只有一种名字时才用）
+      const like = new Set();
+      for (const t in W.byT) if (t.includes(name)) like.add(t);
+      for (const k in W.npcs) if (W.npcs[k].name.includes(name)) like.add(W.npcs[k].name);
+      if (like.size === 1) { const n = [...like][0]; ts = wTargets(n); name = n; }
+      else if (like.size > 1) { note('「' + name + '」有好几个：' + [...like].slice(0, 8).join('、') + (like.size > 8 ? '…' : '') + '。说全名。'); return; }
+    }
+    if (!ts.size) {
+      const known = Object.values(W.npcs).some((n) => n.name === name) || Object.values(W.items).some((it) => it.name === name);
+      note(known ? '「' + name + '」不在固定的房间里（会到处走、任务才出现，或者要自己做出来），没法直接带你去。'
+        : '百科里没有叫「' + name + '」的地点、人物或物品。');
+      return;
+    }
+    if (!wCur) { note('还没认出你现在在哪个房间，走一步再试。'); return; }
+    const dist = wDist(wCur, 8000), outd = wOutdoor(wCur);
+    let best = null, bestCost = Infinity;
+    for (const [f, why] of ts) {
+      let c = f in dist ? dist[f] : Infinity;
+      const g = W.rooms[f].go;
+      if (g && outd) c = Math.min(c, outd.length + 12 + g.steps.length);
+      if (c < bestCost) { bestCost = c; best = [f, why]; }
+    }
+    if (!best || bestCost === Infinity) { note('知道「' + name + '」在哪，但百科里找不到走过去的路。'); return; }
+    if (best[0] === wCur) { note('「' + name + '」就在这里。'); return; }
+    note('去' + W.rooms[best[0]].s + (best[1] ? '（' + best[1] + '）' : '') + (ts.size > 1 ? '，' + ts.size + ' 处里最近的一处' : '') + '。');
+    wWalk(best[0]);
   }
   function wWalk(to) {
     const r = W.rooms[to];
@@ -342,7 +405,12 @@
     roomTitle = plain(str);
     roomExits = {};
     scheduleCommit();
-    if (queue && queue.move) { queue.move = false; queue.cmds.shift(); queue.retry = 0; clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 300); }
+    if (queue && queue.move) {
+      const next = queue.special && queue.cmds[1];
+      // 特殊动作：落到中转房间（船舱）时继续等，直到出现下一条指令能用的房间或超时
+      if (queue.special && queue.expectT && plain(str) !== queue.expectT) { /* still travelling */ }
+      else { queue.move = false; queue.cmds.shift(); queue.retry = 0; clearTimeout(queue.timer); queue.timer = setTimeout(qNext, next ? 600 : 300); }
+    }
     return origST.apply(this, arguments);
   };
   window.writeToEX = function (str) {
@@ -368,6 +436,8 @@
       if (ev === 'stream' && !autoSending) {
         const wq = String(data).trim().match(/^(?:wiki|百科)(?:\s+(.*))?$/i);
         if (wq && W) { openWiki(wq[1] || ''); return; }
+        const gq = String(data).trim().match(/^去\s*(.+)$/);
+        if (gq && W) { stopRoute(null); stopQueue(null); wGoto(gq[1].trim()); return; }
         const parts = String(data).split(/[;；]/).map((x) => x.trim()).filter(Boolean);
         if (route) stopRoute('你自己输入了指令，自动走路已停止。');
         if (queue) stopQueue(null);
@@ -473,11 +543,19 @@
     if (!queue.cmds.length) { queue = null; note('指令都执行完了。'); return; }
     const c = queue.cmds[0];
     queue.fly = /^fly\s/.test(c);
-    queue.move = !queue.fly && (!!roomExits[c] || !!D[c] || /^go\s/.test(c));
+    // 特殊动作（百科里记的 x.c 不带方向的那种）也会换房间，按走路等
+    const sx = !queue.fly && W && wCur && W.rooms[wCur] && (W.rooms[wCur].x || []).find((x) => x.c === c && !x.d);
+    queue.special = !!sx;
+    queue.expectT = sx && W.rooms[sx.t] ? W.rooms[sx.t].s : null;
+    queue.move = !queue.fly && (queue.special || !!roomExits[c] || !!D[c] || /^go\s/.test(c));
     sendAuto(c);
     if (panel && wMode) render();
     if (queue.fly) queue.timer = setTimeout(() => stopQueue('飞了 15 秒还没落地，后面的指令不发了。'), 15000);
-    else if (queue.move) queue.timer = setTimeout(() => stopQueue('「' + c + '」走了 5 秒还没到，后面的指令不发了。'), 5000);
+    else if (queue.move) {
+      // 上船之类会先进船舱再过几秒到岸：第一次换房间不算，等到岸（最多 20 秒）
+      const wait = queue.special ? 20000 : 5000;
+      queue.timer = setTimeout(() => stopQueue('「' + c + '」' + (queue.special ? '过了 20 秒还没到' : '走了 5 秒还没到') + '，后面的指令不发了。'), wait);
+    }
     else queue.timer = setTimeout(() => { if (!queue) return; queue.cmds.shift(); qNext(); }, 800);
   }
   function stopQueue(msg) {
@@ -500,7 +578,7 @@
     if (/动作还没有完成|正忙着|忙着呢|还在飞/.test(t)) {
       if (++queue.retry > 8) { stopQueue('一直在忙，后面的指令不发了。'); return; }
       queue.move = false; clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 1200);
-    } else if (/逃跑失败|拦在面前|想走？|这个方向没有出路|你过不去|动弹不得|哪里也去不了|拦住|挡住|不能离开|无法离开|什么？/.test(t)) {
+    } else if (/逃跑失败|拦在面前|想走？|这个方向没有出路|你过不去|动弹不得|哪里也去不了|拦住|挡住|不能离开|无法离开|请回|不接待|不准|不许|闲杂人等|什么？/.test(t)) {
       stopQueue('「' + queue.cmds[0] + '」没走成：' + t.slice(0, 30));
     }
   }
@@ -838,7 +916,7 @@
   let wLayoutCache = null;
 
   function toggle() { if (panel) close(); else render(); }
-  window.MudMiniMap = { toggle, close, walkTo: startRoute, stop: () => stopRoute(null), state: () => ({ cur: S.cur, route, cw, panX, panY }), findPath, reset: () => { S = { segs: {}, next: 1, cur: null }; save(); if (panel) render(); } };
+  window.MudMiniMap = { toggle, close, walkTo: startRoute, stop: () => { stopRoute(null); stopQueue(null); }, state: () => ({ cur: S.cur, route, cw, panX, panY, wCur, queue: queue && queue.cmds.slice() }), findPath, reset: () => { S = { segs: {}, next: 1, cur: null }; save(); if (panel) render(); } };
 
   // 百科「带我去」：百科页面把路线（fly xx;north;…）交过来，按连续指令走。
   // 百科嵌在游戏页面里时用 postMessage；单独开的百科用同源 BroadcastChannel，收到后回执。
@@ -906,10 +984,13 @@
     if (!W || !hd || hd.querySelector('[data-mm=wikibtn]') || !hd.querySelector('button[onclick^="cmdsa"], button[onclick^="cmdsc"]')) return;
     const name = plain(window.dialog_title).replace(/^[「『【\[(（].*?[」』】\])）]/, '').trim();
     if (!name || !W.names.has(name)) return;
+    // 和弹窗里原有的动作按钮长得一样（同宽同高同对齐），排在最后一格
+    const like = hd.querySelector('button[onclick^="cmdsa"], button[onclick^="cmdsc"]');
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = '查百科';
     b.dataset.mm = 'wikibtn';
-    b.style.cssText = 'font-size:10px;color:#9cf;width:49%;height:30px';
+    b.style.cssText = like.style.cssText;
+    b.style.color = '#9cf';
     b.addEventListener('click', () => { try { $('#hudong').dialog('close'); } catch (e) { /* ignore */ } openWiki(name); });
     hd.appendChild(b);
   }

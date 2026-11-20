@@ -55,7 +55,19 @@ string player_stats()
 	for (i = 0; i < sizeof(ks); i++) r += (i ? "," : "") + jq(ks[i]) + ":" + sk[ks[i]];
 	r += "},\"e\":{";
 	for (i = 0; i < sizeof(ks); i++) r += (i ? "," : "") + jq(ks[i]) + ":" + ob->query_skill(ks[i]);
-	return r + "}}";
+	// 「我的角色」页用：激发、当前状态、所在房间
+	r += "},\"map\":{";
+	sk = ob->query_skill_map();
+	if (! mapp(sk)) sk = ([]);
+	ks = keys(sk);
+	for (i = 0; i < sizeof(ks); i++) r += (i ? "," : "") + jq(ks[i]) + ":" + jq(sk[ks[i]]);
+	r += "},\"s\":{";
+	ks = ({ "qi", "eff_qi", "max_qi", "jing", "eff_jing", "max_jing", "neili", "jingli", "potential", "learned_points", "food", "water", "balance", "mud_age", "family/generation" });
+	for (i = 0; i < sizeof(ks); i++) r += (i ? "," : "") + "\"" + ks[i] + "\":" + to_int(ob->query(ks[i]));
+	r += "},\"title\":" + jq(ob->query("title")) + ",\"nick\":" + jq(ob->query("nickname")) +
+	     ",\"id\":" + jq(ob->query("id")) +
+	     ",\"room\":" + jq(environment(ob) ? base_name(environment(ob)) : 0);
+	return r + "}";
 }
 
 void create()

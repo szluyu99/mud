@@ -76,8 +76,12 @@ function addPwaHead(html, g) {
 }
 
 const toolbar = `
-<div id="mudwasm-bar" style="position:fixed;right:4px;top:4px;z-index:9999;font:12px sans-serif;opacity:.8;text-align:right">
-  <button onclick="var p=document.getElementById('mudwasm-panel');p.style.display=p.style.display=='none'?'block':'none'" title="存档 / 换游戏">存档</button>
+<style>
+#mudwasm-bar button{width:auto;min-width:44px;height:24px;margin:0 0 0 4px;padding:0 8px;font:12px sans-serif;color:#ccc;background:rgba(40,40,40,.85);border:1px solid rgba(150,150,150,.4);border-radius:4px}
+#mudwasm-panel button{margin:2px 0 0 4px}
+</style>
+<div id="mudwasm-bar" style="position:fixed;right:4px;top:4px;z-index:9999;font:12px sans-serif;opacity:.85;text-align:right">
+  <!--WIKIBTN--><button onclick="var p=document.getElementById('mudwasm-panel');p.style.display=p.style.display=='none'?'block':'none'" title="存档 / 换游戏">存档</button>
   <div id="mudwasm-panel" style="display:none;margin-top:2px;background:#222;padding:3px;border-radius:3px">
   <button onclick="MudWasm.exportSave()" title="下载存档文件">导出存档</button>
   <label style="cursor:pointer"><input type="file" accept=".json" style="display:none" onchange="this.files[0]&&MudWasm.importSave(this.files[0])"><button onclick="this.previousElementSibling.click()" title="从文件恢复存档">导入存档</button></label>
@@ -120,8 +124,9 @@ function patchZjmud(dir, g) {
   if (!html.includes('<script src="main.js" ></script>')) throw new Error(g.id + ': main.js tag not found');
   html = html.replace('<script src="main.js" ></script>', '<script src="main.js" ></script>\n  <script src="../minimap.js"></script>');
   html = addPwaHead(html, g);
-  if (g.wiki) html = html.replace('<a href="../" style="color:#9cf;margin-left:4px">换游戏</a>',
-    '<a href="../wiki/?g=' + g.id + '" onclick="return !(window.MudMiniMap && MudMiniMap.wiki && MudMiniMap.wiki(\'\'))" style="color:#9cf;margin-left:4px">百科</a> <a href="../" style="color:#9cf;margin-left:4px">换游戏</a>');
+  // 百科：工具栏上和「存档」并排的按钮（游戏里打开浮层；浮层不可用时去百科页面）
+  html = html.replace('<!--WIKIBTN-->', g.wiki
+    ? '<button onclick="if(!(window.MudMiniMap&&MudMiniMap.wiki&&MudMiniMap.wiki(\'\')))location.href=\'../wiki/?g=' + g.id + '\'" title="查武功、师父、物品、地点">百科</button>' : '');
   fs.writeFileSync(fi, html);
 }
 

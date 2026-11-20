@@ -72,8 +72,67 @@ async function dump({ driverDir, mudlibDir, config }) {
 const plain = (s) => (typeof s === 'string'
   ? s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b\d{3}/g, '').replace(/\$(br|zj|z2)#/g, '').trim()
   : '');
-const norm = (f) => (typeof f === 'string' ? f.replace(/\.c$/, '') : '');
+// 去掉 .c，补上开头的 /（有的房间写成 "d/gaibang/..."，游戏里一样能走）
+const norm = (f) => (typeof f === 'string' ? f.replace(/\.c$/, '').replace(/^(?=[^/])/, '/') : '');
 const num = (v) => (typeof v === 'number' ? v : 0);
+
+// 房间里 add_action 出来的进出方式。只认两种写法：
+//   函数里 set("exits/<方向>", 目标)  → 先发这条指令，再往那个方向走
+//   函数里 ->move(目标)               → 这条指令直接把人挪过去
+// 同一条指令能去好几个地方的（迷阵、随机传送）不算；会伤人或退出的也不算。
+const XDENY = /^(sheshen|kickout|wudou|bed|sleep|suicide|quit|jump\s+ya)/;
+const XBAD = /^\/d\/(wizard|death|fuben|pk|register)\//;   // 巫师房、阴间、副本、PK 场、注册房
+function actionEdges(mudlibDir, rooms) {
+  const resolveTo = (f, expr) => {
+    let m;
+    if ((m = /^__DIR__\s*"([^"]+)"$/.exec(expr))) return path.posix.normalize(path.posix.dirname(f) + '/' + m[1]).replace(/\.c$/, '');
+    if ((m = /^"(\/[^"]+)"$/.exec(expr))) return m[1].replace(/\.c$/, '');
+    return null;
+  };
+  const body = (src, name) => {
+    const i = src.search(new RegExp('\\b' + name + '\\s*\\([^)]*\\)\\s*\\{'));
+    if (i < 0) return '';
+    const j = src.indexOf('{', i);
+    for (let k = j, d = 0; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}' && !--d) return src.slice(j, k + 1); }
+    return '';
+  };
+  const out = {};
+  for (const f of Object.keys(rooms)) {
+    if (XBAD.test(f)) continue;
+    let src;
+    try { src = fs.readFileSync(path.join(mudlibDir, f + '.c'), 'utf8'); } catch { continue; }
+    const got = [];
+    for (const a of src.matchAll(/add_action\s*\(\s*"(\w+)"\s*,\s*"([^"]+)"/g)) {
+      const b = body(src, a[1]);
+      if (!b) continue;
+      const ts = [];
+      // 指令参数取离「开出口 / 挪人」最近的那个 arg 判断（同一个函数里可能按参数分好几支）
+      const cmdAt = (at) => {
+        let arg = null, ai = 0;
+        for (const m of b.slice(0, at).matchAll(/arg\s*(?:!=|==)\s*"([^"]+)"/g)) { arg = m[1]; ai = m.index; }
+        // 这一支还要看之前做过什么（比如梅庄敲门要按顺序敲四次）：不收
+        if (/query_temp\s*\(/.test(b.slice(ai, at))) return null;
+        const c = a[2] + (arg ? ' ' + arg : '');
+        return XDENY.test(c) ? null : c;
+      };
+      for (const m of b.matchAll(/set\s*\(\s*"exits\/(\w+)"\s*,\s*(__DIR__\s*"[^"]+"|"\/[^"]+")\s*\)/g)) {
+        const t = resolveTo(f, m[2]), c = cmdAt(m.index);
+        if (c && t && rooms[t] && t !== f && !XBAD.test(t)) ts.push({ c, d: m[1], t });
+      }
+      // room = find_object(X) / load_object(X)，之后 me->move(room)
+      const vars = {};
+      for (const m of b.matchAll(/(\w+)\s*=\s*(?:find_object|load_object)\s*\(\s*(__DIR__\s*"[^"]+"|"\/[^"]+")\s*\)/g)) vars[m[1]] = m[2];
+      for (const m of b.matchAll(/->move\s*\(\s*(__DIR__\s*"[^"]+"|"\/[^"]+"|\w+)\s*\)/g)) {
+        const e = /^\w+$/.test(m[1]) ? vars[m[1]] : m[1];
+        const t = e && resolveTo(f, e), c = cmdAt(m.index);
+        if (c && t && rooms[t] && t !== f && !XBAD.test(t)) ts.push({ c, t });
+      }
+      if (new Set(ts.map((x) => x.t)).size === 1 && !got.some((x) => x.c === ts[0].c)) got.push(ts[0]);
+    }
+    if (got.length) out[f] = got;
+  }
+  return out;
+}
 
 // fly 指令的落脚点：从 cmds/usr/fly.c 里读出「简称 → 房间」
 function flyPoints(mudlibDir) {
@@ -111,6 +170,10 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
   const npcAt = {}, itemAt = {};
   for (const [f, r] of Object.entries(rooms)) for (const o of r.n) (npcAt[o] ||= []).push(f), (itemAt[o] ||= []).push(f);
 
+  // 特殊进出：房间源码里 add_action 的指令会开出口（knock gate → 开 east）或直接把人挪走（enter dong）
+  const xe = actionEdges(mudlibDir, rooms);
+  for (const f in xe) rooms[f].x = xe[f];
+
   // shortest walk from a fly point to every room
   const fly = flyPoints(mudlibDir).filter((p) => rooms[p.room]);
   const route = {};
@@ -119,7 +182,9 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
     for (const p of fly) if (!route[p.room]) { route[p.room] = { from: p.key, prev: null, d: null, len: 0 }; q.push(p.room); }
     for (let i = 0; i < q.length; i++) {
       const cur = q[i];
-      for (const [d, to] of Object.entries(rooms[cur].e)) {
+      const edges = Object.entries(rooms[cur].e).map(([d, to]) => [[d], to]);
+      for (const x of rooms[cur].x || []) edges.push([x.d ? [x.c, x.d] : [x.c], x.t]);
+      for (const [d, to] of edges) {
         if (!rooms[to] || route[to]) continue;
         route[to] = { from: route[cur].from, prev: cur, d, len: route[cur].len + 1 };
         q.push(to);
@@ -130,8 +195,8 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
     const r = route[f];
     if (!r) return null;
     const steps = [];
-    for (let c = f; route[c] && route[c].prev; c = route[c].prev) steps.push(route[c].d);
-    return { fly: r.from, steps: steps.reverse() };
+    for (let c = f; route[c] && route[c].prev; c = route[c].prev) steps.unshift(...route[c].d);
+    return { fly: r.from, steps };
   };
 
   // npcs
