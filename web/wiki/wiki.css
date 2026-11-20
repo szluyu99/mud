@@ -54,3 +54,10 @@ body.embed #play, body.embed #game { display: none !important; }
 .rcv.no { background: #3a1e1e; color: #f99; }
 ul.rc b.ok { color: #6d6; }
 ul.rc b.no { color: #f66; }
+/* 差的条件怎么补 */
+.how { margin: 3px 0 6px 18px; padding: 4px 8px; border-left: 2px solid #4a6a8a; color: #bcd; font-size: 13px; }
+.how.no { border-left-color: #6a4a4a; color: #c99; }
+ul.how { margin: 2px 0 2px 0; padding-left: 16px; border: 0; }
+ul.how li { margin: 1px 0; }
+.rowb .go { margin: -4px 0 6px 10px; }
+.rowb .go button { padding: 2px 10px; font-size: 13px; }

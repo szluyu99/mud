@@ -144,6 +144,7 @@ void do_npc(string f)
 	if (mapp(sk = ob->query_skill_map())) m["map"] = sk;
 	if (arrayp(ob->query("vendor_goods"))) m["sell"] = ob->query("vendor_goods");
 	m["teach"] = function_exists("attempt_apprentice", ob) ? 1 : 0;
+	m["lt"] = function_exists("recognize_apprentice", ob) ? 1 : 0;
 	inv = all_inventory(ob);
 	m["inv"] = map(inv, (: base_name($1) :));
 	emit(js(m));

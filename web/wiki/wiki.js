@@ -157,8 +157,150 @@
     if (r.c) return !refused(st, r.c);
     return null;
   }
+  const CLASS_CN = { bonze: '和尚', taoist: '道士', beggar: '乞丐', dancer: '舞者', eunach: '太监', scholar: '书生', lama: '喇嘛', fighter: '武士',
+    swordsman: '剑客', huanxi: '欢喜佛', officer: '官员', alchemist: '炼丹', yaoshi: '药师' };
+  // ---------- 差的条件怎么补 ----------
+  // 从你现在的房间走过去要多远（只走路；远的按 fly 落脚点再走算）
+  let DIST = null, DISTFROM = null;
+  function distFrom(from) {
+    if (DISTFROM === from && DIST) return DIST;
+    const d = {};
+    if (from && D.rooms[from]) {
+      d[from] = 0;
+      const q = [from];
+      for (let h = 0; h < q.length; h++) {
+        const r = D.rooms[q[h]];
+        const nx = Object.values(r.e || {}).concat((r.x || []).map((x) => x.t));
+        for (const t of nx) if (D.rooms[t] && !(t in d)) { d[t] = d[q[h]] + 1; q.push(t); }
+      }
+    }
+    DIST = d; DISTFROM = from;
+    return d;
+  }
+  // [花费, 说明]：花费只用来排序，fly 一次按 12 步算
+  function costTo(f, st) {
+    const d = st && st.room ? distFrom(st.room) : {};
+    const g = D.rooms[f] && D.rooms[f].go;
+    const walk = f in d ? d[f] : Infinity, fly = g ? 12 + g.steps.length : Infinity;
+    if (walk === 0) return [0, '就在这里'];
+    if (walk <= fly) return walk === Infinity ? [Infinity, ''] : [walk, '走 ' + walk + ' 步'];
+    return [fly, 'fly ' + g.fly + (g.steps.length ? ' 再走 ' + g.steps.length + ' 步' : '')];
+  }
+  function npcCost(nf, st) {
+    let best = [Infinity, ''];
+    for (const f of D.npcs[nf].at || []) { const c = costTo(f, st); if (c[0] < best[0]) best = c; }
+    return best;
+  }
+  // 谁能教你这门技能到 need 级
+  function teachersOf(s, need, st, target) {
+    const fam = (st && st.fam) || (target && target.fam && target.fam.n) || '';
+    const out = [];
+    for (const [nf, m] of Object.entries(D.npcs)) {
+      if (target && m === target) continue;
+      const lv = (m.sk || {})[s] || 0;
+      if (lv < need || !(m.at || []).length) continue;
+      let how, rank;
+      if (m.lt === 1) { how = '谁都教'; rank = 0; }
+      else if (m.teach && m.fam && m.fam.n === fam) {
+        if (st && st.fam) { how = '本门'; rank = 0; }
+        else { const b = canJoin(m, st || {}); how = b === 0 ? '拜他为师后能学，条件都满足' : b > 0 ? '拜他为师后能学，他还有 ' + b + ' 条拜师条件你不满足' : '拜他为师后能学'; rank = b === 0 ? 1 : 2; }
+      } else if (m.lt === 2) { how = '有条件才教（交学费或做过任务）'; rank = 3; }
+      else continue;
+      out.push({ nf, lv, how, rank, cost: npcCost(nf, st) });
+    }
+    out.sort((a, b) => a.rank - b.rank || a.cost[0] - b.cost[0] || a.lv - b.lv);
+    return out;
+  }
+  function booksOf(s, cur) {
+    return (D.skills[s] ? D.skills[s].books : []).filter((f) => D.items[f] && D.items[f].book && D.items[f].book.max > cur)
+      .map((f) => [f, D.items[f]]).sort((a, b) => a[1].book.min - b[1].book.min);
+  }
+  const listTeachers = (ts) => '<ul class="how">' + ts.slice(0, 5).map((t) => '<li>' + npcLink(t.nf) + ' <span class="muted">' +
+    t.lv + ' 级 · ' + esc(t.how) + (t.cost[1] ? ' · ' + esc(t.cost[1]) : '') + '</span></li>').join('') +
+    (ts.length > 5 ? '<li class="muted">另有 ' + (ts.length - 5) + ' 人</li>' : '') + '</ul>';
+  const listBooks = (bs) => '<ul class="how">' + bs.slice(0, 3).map(([f, it]) => '<li>秘籍 ' + itemLink(f) + ' <span class="muted">' +
+    it.book.min + '~' + it.book.max + ' 级能读' + ((it.sold || []).length ? ' · ' + esc(npcName(it.sold[0])) + '在卖' : '') + '</span></li>').join('') + '</ul>';
+  // 一个比较式 c = [键, 运算, 值]（玩家「运算 值」时被拒）→ { short, html }
+  const BASIC_ATTR = { int: ['literate', 10, '学「读书写字」，每 10 级悟性 +1'], con: ['force', 10, '练「基本内功」，每 10 级根骨 +1'],
+    dex: ['dodge', 10, '练「基本轻功」，每 10 级身法 +1'] };
+  function hintC(c, st, target) {
+    const [k, op, w] = c, [g, x] = k.split(':'), cur = statOf(st, k);
+    const no = (why) => ({ short: why, html: '<div class="how no">' + esc(why) + '</div>' });
+    const box = (txt, extra) => ({ short: txt.split('。')[0], html: '<div class="how">' + esc(txt) + (extra || '') + '</div>' });
+    if (g === 'b' || g === 'e') {
+      const need = op === '<' ? w : op === '<=' ? w + 1 : 0;
+      if (!need) return no('这门武功练得太高了，师父不收，没法降回去。');
+      const base = (st.b || {})[x] || 0;
+      const ts = teachersOf(x, need, st, target), bs = booksOf(x, base);
+      const nm = D.skills[x] ? D.skills[x].name : x;
+      let txt = '要把「' + nm + '」练到 ' + need + ' 级，现在 ' + (g === 'e' ? '有效 ' + cur : base) + ' 级。';
+      if (g === 'e') txt += '有效等级 = 基本等级 + 激发到它上面的高级武功等级，学一门能激发成它的武功也算。';
+      if (!ts.length && !bs.length) txt += target && target.fam && !(st && st.fam) ? '先拜入' + target.fam.n + '，跟本门师父学。' : '百科里没找到能教到这个等级的人。';
+      const t0 = ts[0];
+      const r = box(txt, (ts.length ? listTeachers(ts) : '') + (bs.length ? listBooks(bs) : ''));
+      if (t0) r.short = '找' + npcName(t0.nf) + '学' + nm + (t0.cost[1] ? '（' + t0.cost[1] + '）' : '');
+      else if (bs.length) r.short = '读' + bs[0][1].name;
+      return r;
+    }
+    if (g === 'a') {
+      const diff = op === '<' ? w - cur : op === '<=' ? w + 1 - cur : 0;
+      if (diff <= 0) return no('这项太高了，补不了。');
+      if (x === 'per' || x === 'kar') return no((x === 'per' ? '容貌' : '福缘') + '是先天属性，补不了。');
+      if (x === 'str') return box('膂力还差 ' + diff + ' 点。拳脚类基本功（基本拳法、掌法、指法、手法、爪法、扑击格斗）每 30 级膂力 +1，几门加在一起算。');
+      const [sk, per, how] = BASIC_ATTR[x];
+      const lv = ((st.b || {})[sk] || 0) + diff * per;
+      const ts = teachersOf(sk, lv, st, target);
+      const r = box((ATTR.find((a) => a[0] === x) || [x, x])[1] + '还差 ' + diff + ' 点。' + how + '，要练到 ' + lv + ' 级。', ts.length ? listTeachers(ts) : '');
+      r.short = how.split('，')[0] + '到 ' + lv + ' 级';
+      return r;
+    }
+    if (g === 'p') {
+      const need = op === '<' ? w - cur : op === '>' ? cur - w : 0;
+      switch (x) {
+        case 'combat_exp': return op === '>' ? no('经验太高了，这位师父只收新手，补不了。') : box('经验还差 ' + need + '。经验靠打架和做任务涨（师门任务、自动师门）。');
+        case 'shen': return op === '<' ? box('正气还差 ' + need + '。正气靠杀坏人、邪派人物，做正派的任务涨。')
+          : box('要邪气（神在 ' + w + ' 以下），还差 ' + need + '。邪气靠杀好人、正派人物涨。');
+        case 'max_neili': return box('内力上限还差 ' + need + '。靠打坐（dazuo，可以用自动修炼）涨，基本内功越高，上限能练得越高。');
+        case 'max_jingli': return box('精力上限还差 ' + need + '。靠吐纳（tuna）涨。');
+        case 'age': return op === '<' ? box('年龄还差 ' + need + ' 岁，在线时间长了自然会长。') : no('年纪太大了，补不了。');
+        case 'per': case 'kar': case 'int': case 'str': case 'con': case 'dex': return no('这是出生时定下的先天属性，补不了。');
+      }
+      return box('「' + x + '」还差 ' + need + '。');
+    }
+    if (k === 'gender') return no('性别改不了，补不了。');
+    if (k === 'class') {
+      if (op === '==') return no('已经是这个身份的不收，补不了。');
+      const gv = ((D.cls || {})[w] || []).filter((f) => D.npcs[f] && D.npcs[f] !== target && (D.npcs[f].at || []).length);
+      const nm = CLASS_CN[w] || w;
+      const ts = gv.map((nf) => ({ nf, lv: 0, how: D.npcs[nf].fam ? D.npcs[nf].fam.n : '', rank: 0, cost: npcCost(nf, st) })).sort((a, b) => a.cost[0] - b.cost[0]);
+      const r = box('要先变成' + nm + '。下面这些人收你（拜师或剃度）时会改你的身份：', ts.length ? '<ul class="how">' + ts.slice(0, 5).map((t) => '<li>' + npcLink(t.nf) +
+        ' <span class="muted">' + esc(t.how) + (t.cost[1] ? ' · ' + esc(t.cost[1]) : '') + '</span></li>').join('') + '</ul>' : '');
+      if (ts[0]) r.short = '先找' + npcName(ts[0].nf) + '变成' + nm;
+      return r;
+    }
+    if (k === 'fam') {
+      if (op === '==') return no('不收' + w + '的人，补不了。');
+      if (st.fam && st.fam !== w) return no('你已经是' + st.fam + '的人了，要改投' + w + '只能先叛师（会被记过）。');
+      const ms = (D.fams[w] || []).filter((f) => D.npcs[f].teach && (D.npcs[f].at || []).length).map((nf) => ({ nf, bad: canJoin(D.npcs[nf], st), cost: npcCost(nf, st) }))
+        .filter((m) => m.bad === 0 || m.bad === -1).sort((a, b) => (a.bad === 0 ? 0 : 1) - (b.bad === 0 ? 0 : 1) || D.npcs[a.nf].exp - D.npcs[b.nf].exp);
+      const r = box('要先拜入' + w + '的低辈分师父。你现在就能拜的：', ms.length ? '<ul class="how">' + ms.slice(0, 5).map((m) => '<li>' + npcLink(m.nf) +
+        ' <span class="muted">第 ' + D.npcs[m.nf].fam.g + ' 代' + (m.bad === -1 ? ' · 没读出条件' : '') + (m.cost[1] ? ' · ' + esc(m.cost[1]) : '') + '</span></li>').join('') + '</ul>' : '<div class="muted">没找到条件都满足的。</div>');
+      if (ms[0]) r.short = '先拜' + npcName(ms[0].nf);
+      return r;
+    }
+    return { short: '', html: '' };
+  }
+  function howTo(r, st, target) {
+    if (r.c) return hintC(r.c, st, target);
+    if (r.any) {
+      const hs = r.any.filter((c) => c && refused(st, c)).map((c) => hintC(c, st, target));
+      return { short: hs[0] ? hs[0].short : '', html: '<div class="muted">满足其中一项就行：</div>' + hs.map((h) => h.html).join('') };
+    }
+    return { short: '', html: '' };
+  }
+  function failing(n, st) { return ((n.rc && n.rc.req) || []).filter((r) => reqOk(st, r) === false); }
   function mark(ok) { return ok === null ? '' : ok ? '<b class="ok">✓</b> ' : '<b class="no">✗</b> '; }
-  function recruitBox(n, st) {
+  function recruitBox(n, st, f) {
     const rc = n.rc || { req: [], said: [], daily: 0 };
     let bad = 0, known = 0;
     const li = rc.req.map((r) => {
@@ -166,7 +308,7 @@
       if (r.s && D.skills[r.s]) { const nm = esc(D.skills[r.s].name); t = t.replace(nm, skLink(r.s)); }
       const ok = st ? reqOk(st, r) : null;
       if (ok !== null) { known++; if (!ok) bad++; }
-      return '<li>' + mark(ok) + t + '</li>';
+      return '<li>' + mark(ok) + t + (ok === false ? howTo(r, st, n).html : '') + '</li>';
     });
     if (rc.daily) li.push('<li>每天收徒有名额，满了要第二天再来</li>');
     let famOk = null;
@@ -178,9 +320,21 @@
     const verdict = !st ? '<div class="muted" id="rcwho">打开游戏并登录后，这里会逐条对照你的角色。</div>'
       : '<div class="rcv ' + (bad ? 'no' : 'ok') + '">' + esc(st.name || '你') + '：' +
         (bad ? '还差 ' + bad + ' 条' : known ? '读得出的条件都满足了，可以去拜师' : '没有读出可比对的条件') + '</div>';
-    return verdict + '<ul class="rc">' + li.join('') + '</ul>' +
+    if (st && st.fam && st.fam !== n.fam.n) li[li.length - 1] += '<div class="how no">已经入了别的门派，要拜这位师父只能先叛师。</div>';
+    return verdict + baiBtn(f, n, st, bad) + '<ul class="rc">' + li.join('') + '</ul>' +
       (!rc.req.length ? '<div class="muted">源码里没有读出具体的属性要求' + (rc.said.length ? '，下面是师父拒绝时说的话' : '') + '。</div>' : '') +
       (rc.said.length ? '<div class="said">' + rc.said.map((s) => '<div>「' + esc(s) + '」</div>').join('') + '</div>' : '');
+  }
+  // 「去拜师」：走到师父那里发 apprentice <id>，结果在游戏里显示
+  function baiBtn(f, n, st, bad) {
+    if (!f || !n.id) return '';
+    if (!(n.at || []).length) return '<div class="muted">不知道这位师父在哪个房间，没法带你去拜师。</div>';
+    if (st && st.master && st.master === n.id && st.fam === n.fam.n) return '<div class="muted">已经是你的师父了。</div>';
+    const r = D.rooms[n.at[0]];
+    const cmds = r && r.go ? ['fly ' + r.go.fly].concat(r.go.steps) : [];
+    return '<div class="go"><button data-file="' + esc(n.at[0]) + '" data-then="apprentice ' + esc(n.id) + '" data-who="' + esc(n.name) + '" data-go="' +
+      esc(cmds.concat(['apprentice ' + n.id]).join(';')) + '">去拜师</button>' +
+      (bad ? ' <span class="muted">还有 ' + bad + ' 条不满足，去了多半会被拒绝</span>' : ' <span class="muted">走到' + esc(n.name) + '那里发 <code>apprentice ' + esc(n.id) + '</code></span>') + '</div>';
   }
   function npc(f) {
     const n = D.npcs[f];
@@ -191,7 +345,7 @@
       kv([['门派', n.fam ? link('fam', n.fam.n, n.fam.n) + ' 第 ' + n.fam.g + ' 代' + (n.fam.t ? ' ' + esc(n.fam.t) : '') : ''],
         ['收徒', n.teach && n.fam ? '可以拜师（apprentice ' + esc(n.id) + '）' : ''], ['性别', esc(n.gender)], ['年龄', n.age],
         ['经验', n.exp.toLocaleString()], ['气血', n.qi], ['内力', n.neili], ['神', shen]]) +
-      (n.teach && n.fam ? section('拜师条件', '<div id="rcbox">' + recruitBox(n, STATS) + '</div>') : '') +
+      (n.teach && n.fam ? section('拜师条件', '<div id="rcbox">' + recruitBox(n, STATS, f) + '</div>') : '') +
       (n.long ? '<h3>描述</h3><div class="long">' + esc(n.long) + '</div>' : '') +
       section('在哪', showWhere(n.at)) +
       section('武功', skillTable(n.sk, n.map)) +
@@ -299,7 +453,7 @@
       (st.title ? '<div class="muted">' + esc(st.title) + '</div>' : '') +
       kv([['门派', st.fam ? esc(st.fam) + (s['family/generation'] ? '第 ' + s['family/generation'] + ' 代' : '') : '无门无派'],
         ['师父', master ? npcLink(master[0]) : st.master ? esc(st.master) : ''],
-        ['身份', st.class ? esc(st.class) : ''], ['性别', esc(st.gender || '')], ['年龄', p.age ? p.age + ' 岁' : ''],
+        ['身份', st.class ? esc(CLASS_CN[st.class] || st.class) : ''], ['性别', esc(st.gender || '')], ['年龄', p.age ? p.age + ' 岁' : ''],
         ['所在', st.room && D.rooms[st.room] ? roomLink(st.room) : ''],
         ['经验', p.combat_exp], ['潜能', s.potential != null ? Math.max(0, s.potential - (s.learned_points || 0)) : ''],
         ['神', p.shen > 0 ? '正 ' + p.shen : p.shen < 0 ? '邪 ' + -p.shen : '0'],
@@ -324,7 +478,12 @@
     // 经验低的师父排前面：新手先看得到够得着的
     cands.sort((a, b) => a[1].exp - b[1].exp);
     const ok = cands.filter((c) => c[2] === 0), near = cands.filter((c) => c[2] === 1), unk = cands.filter((c) => c[2] === -1);
-    const line = ([f, n, bad]) => row('#/npc/' + enc(f), n.name, n.fam.n + ' 第 ' + n.fam.g + ' 代', bad ? '还差 ' + bad + ' 条' : (n.at[0] ? roomLabel(n.at[0]) : ''));
+    const line = ([f, n, bad]) => {
+      let sub = n.at[0] ? roomLabel(n.at[0]) : '不知道在哪';
+      if (bad === 1) { const r = failing(n, st)[0], h = r ? howTo(r, st, n) : null; sub = '差：' + (r ? r.t : '') + (h && h.short ? '。' + h.short : ''); }
+      const a = row('#/npc/' + enc(f), n.name, n.fam.n + ' 第 ' + n.fam.g + ' 代', sub);
+      return bad === 1 ? a : '<div class="rowb">' + a + baiBtn(f, n, st, 0).replace(/ <span class="muted">.*<\/span><\/div>$/, '</div>') + '</div>';
+    };
     const more = (l, n) => (l.length > n ? '<div class="muted">按经验从低到高，只列前 ' + n + ' 位。</div>' : '');
     h += section((st.fam ? '本门' : '') + '条件都满足的师父（' + ok.length + '）',
       ok.length ? rows(ok.slice(0, 30).map(line)) + more(ok, 30) : '<div class="muted">没有。</div>') +
@@ -405,14 +564,15 @@
     askStats(() => {
       const box = document.getElementById('rcbox');
       const n = D.npcs[f];
-      if (box && n && location.hash.includes(enc(f))) box.innerHTML = recruitBox(n, STATS);
+      if (box && n && location.hash.includes(enc(f))) box.innerHTML = recruitBox(n, STATS, f);
     });
   }
 
   function sendGo(b) {
     const cmds = b.dataset.go.split(';'), file = b.dataset.file || '';
-    const say = (t) => { b.textContent = t; setTimeout(() => { b.textContent = '带我去'; }, 3000); };
-    if (EMBED && window.parent !== window) { window.parent.postMessage({ type: 'wiki-go', cmds, file }, location.origin); return; }
+    const then = b.dataset.then || '', who = b.dataset.who || '', label = b.textContent;
+    const say = (t) => { b.textContent = t; setTimeout(() => { b.textContent = label; }, 3000); };
+    if (EMBED && window.parent !== window) { window.parent.postMessage({ type: 'wiki-go', cmds, file, then, who }, location.origin); return; }
     let ch = null;
     try { ch = new BroadcastChannel('mudwasm-' + game); } catch (e) { /* old browser */ }
     const fallback = () => {
@@ -425,7 +585,7 @@
     const id = Math.random().toString(36).slice(2);
     let acked = false;
     ch.onmessage = (e) => { if (e.data && e.data.type === 'wiki-go-ack' && e.data.id === id) { acked = true; say('已交给游戏，切到游戏页面看'); ch.close(); } };
-    ch.postMessage({ type: 'wiki-go', cmds, file, id });
+    ch.postMessage({ type: 'wiki-go', cmds, file, then, who, id });
     setTimeout(() => { if (!acked) { ch.close(); fallback(); } }, 700);
   }
 

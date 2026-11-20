@@ -76,6 +76,24 @@ const plain = (s) => (typeof s === 'string'
 const norm = (f) => (typeof f === 'string' ? f.replace(/\.c$/, '').replace(/^(?=[^/])/, '/') : '');
 const num = (v) => (typeof v === 'number' ? v : 0);
 
+// 不是师父也肯教的人（recognize_apprentice）：1 = 谁都教；2 = 有条件（交学费、做过任务等）
+function learnOpen(mudlibDir, f) {
+  let src = '';
+  try { src = fs.readFileSync(path.join(mudlibDir, f + '.c'), 'utf8'); } catch (e) { return 2; }
+  const m = src.match(/int\s+recognize_apprentice\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+  return m && /^\s*return\s+1\s*;\s*$/.test(m[1].replace(/\/\/[^\n]*/g, '')) ? 1 : 2;
+}
+// 谁会改你的身份：源码里 ->set("class", "bonze") 之类（拜师时改、剃度时改）
+function classGivers(mudlibDir, npcFiles) {
+  const out = {};
+  for (const f of npcFiles) {
+    let src = '';
+    try { src = fs.readFileSync(path.join(mudlibDir, f + '.c'), 'utf8'); } catch (e) { continue; }
+    for (const m of src.matchAll(/(?:me|ob|who)->set\(\s*"class"\s*,\s*"(\w+)"\s*\)/g)) (out[m[1]] ||= []).includes(f) || out[m[1]].push(f);
+  }
+  return out;
+}
+
 // 房间里 add_action 出来的进出方式。只认两种写法：
 //   函数里 set("exits/<方向>", 目标)  → 先发这条指令，再往那个方向走
 //   函数里 ->move(目标)               → 这条指令直接把人挪过去
@@ -97,6 +115,7 @@ function actionEdges(mudlibDir, rooms) {
     return '';
   };
   const out = {};
+  const cond = { n: 0 };
   for (const f of Object.keys(rooms)) {
     if (XBAD.test(f)) continue;
     let src;
@@ -112,6 +131,8 @@ function actionEdges(mudlibDir, rooms) {
         for (const m of b.slice(0, at).matchAll(/arg\s*(?:!=|==)\s*"([^"]+)"/g)) { arg = m[1]; ai = m.index; }
         // 这一支还要看之前做过什么（比如梅庄敲门要按顺序敲四次）：不收
         if (/query_temp\s*\(/.test(b.slice(ai, at))) return null;
+        // 要看你是哪个门派、练到多少级的（丐帮弟子才钻得进狗洞之类）：不收，路线里不能当成谁都能走
+        if (/family_name|query_skill\s*\(|query\s*\(\s*"(?:combat_exp|shen|class|gender|age|max_neili|neili)"/.test(b.slice(0, at))) { cond.n++; return null; }
         const c = a[2] + (arg ? ' ' + arg : '');
         return XDENY.test(c) ? null : c;
       };
@@ -131,6 +152,7 @@ function actionEdges(mudlibDir, rooms) {
     }
     if (got.length) out[f] = got;
   }
+  out.__skipped = cond.n;
   return out;
 }
 
@@ -172,6 +194,7 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
 
   // 特殊进出：房间源码里 add_action 的指令会开出口（knock gate → 开 east）或直接把人挪走（enter dong）
   const xe = actionEdges(mudlibDir, rooms);
+  const xSkipped = xe.__skipped; delete xe.__skipped;
   for (const f in xe) rooms[f].x = xe[f];
 
   // shortest walk from a fly point to every room
@@ -211,6 +234,7 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
       shen: num(n.shen), long: plain(n.long),
       fam: n.fam && typeof n.fam.n === 'string' ? { n: plain(n.fam.n), g: num(n.fam.g), t: plain(n.fam.t) } : null,
       sk, map: n.map && typeof n.map === 'object' ? n.map : {}, teach: n.teach ? 1 : 0,
+      lt: n.lt ? learnOpen(mudlibDir, f) : 0,
       sell: (n.sell || []).filter((x) => typeof x === 'string').map(norm),
       inv: (n.inv || []).map(norm),
       at: npcAt[f] || [],
@@ -271,5 +295,8 @@ export async function genWiki({ driverDir, mudlibDir, config = 'config.zj', titl
   const roomOut = {};
   for (const [f, r] of Object.entries(rooms)) roomOut[f] = { ...r, go: pathTo(f) };
 
-  return { title, made: new Date().toISOString().slice(0, 10), fly, skills, npcs, items, rooms: roomOut, fams, regions };
+  // 谁会给你改身份（出家、入道、当乞丐…），拜师条件里「身份必须是 X」时用
+  const cls = classGivers(mudlibDir, Object.keys(npcs));
+
+  return { title, made: new Date().toISOString().slice(0, 10), fly, skills, npcs, items, rooms: roomOut, fams, regions, cls };
 }

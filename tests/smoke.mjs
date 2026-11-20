@@ -149,9 +149,19 @@ async function zjmudExtras(page, ctx) {
   await p2.evaluate((h) => { location.hash = h; }, '#/npc/' + encodeURIComponent('/kungfu/class/huashan/yue-buqun'));
   const rcOk = await until(p2, () => /还差 1 条/.test(document.getElementById('rcbox')?.innerText || ''), 8000);
   check('zjmud: wiki tab checks 拜师条件 against the character', rcOk, await p2.evaluate(() => document.getElementById('rcbox')?.innerText.slice(0, 80)));
+  // 差的条件怎么补：岳不群差悟性，提示学读书写字
+  check('zjmud: 拜师条件 says how to fix 悟性', /读书写字/.test(await p2.evaluate(() => document.getElementById('rcbox')?.innerText || '')));
+  // 去拜师：被拒绝时把师父的原话显示出来
+  await p2.evaluate(() => document.querySelector('button[data-then]').click());
+  check('zjmud: 去拜岳不群 walks there and reports the refusal', await until(page, () => /没拜成。岳不群/.test(document.body.innerText), 60000));
+  // 去拜师：条件都满足的裘万家收下新角色
+  await p2.evaluate((h) => { location.hash = h; }, '#/npc/' + encodeURIComponent('/kungfu/class/gaibang/qiu-wanjia'));
+  await until(p2, () => !!document.querySelector('button[data-then]'), 8000);
+  await p2.evaluate(() => document.querySelector('button[data-then]').click());
+  check('zjmud: 去拜裘万家 succeeds', await until(page, () => /拜师成功/.test(document.body.innerText), 60000));
   // 我的角色：读出当前角色，列出能拜的师父
   await p2.evaluate(() => { location.hash = '#/me'; });
-  const meOk = await until(p2, () => /龙飞/.test(document.querySelector('main h2')?.textContent || '') && /条件都满足的师父/.test(document.querySelector('main').innerText), 8000);
+  const meOk = await until(p2, () => /龙飞/.test(document.querySelector('main h2')?.textContent || '') && /条件都满足的师父/.test(document.querySelector('main').innerText) && /丐帮/.test(document.querySelector('main').innerText), 8000);
   check('zjmud: wiki 我的角色 shows the character and masters', meOk, await p2.evaluate(() => document.querySelector('main').innerText.slice(0, 80)));
   check('zjmud: wiki tab has no page errors', !e2.length, e2);
   await p2.close();
@@ -163,7 +173,7 @@ async function zjmudExtras(page, ctx) {
   const qz = await waitRoom(page, '全真教大门', 30000);
   await page.waitForTimeout(6000);
   const said = await page.evaluate(() => document.body.innerText.includes('没走成'));
-  check('zjmud: "去大堂一进" flies to 全真教大门 and knocks', qz && said, await room(page));
+  check('zjmud: "去大堂一进" flies to 全真教大门 and knocks', qz && said, (await room(page)) + ' | ' + (await page.evaluate(() => (document.body.innerText.match(/【连续指令】[^【\n]*/g) || []).slice(-4).join(' / '))));
   // 动作带人走：百丈涧 zou tiesuo → 仙愁门（fly lj 落在百丈涧）
   await send(page, '去仙愁门');
   check('zjmud: "去仙愁门" uses zou tiesuo', await waitRoom(page, '仙愁门', 30000), await room(page));

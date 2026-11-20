@@ -124,6 +124,7 @@
   function wPlan(to) {
     const r = W.rooms[to];
     if (!r) return null;
+    if (commitTimer) { clearTimeout(commitTimer); commit(); }   // 刚到一个房间还没记下来：先记，免得按上一个房间算路
     let p = wPath(wCur, to);
     if (p && r.go && p.length > r.go.steps.length + 12) p = null;   // 远：先 fly 更快
     if (!p && r.go) {
@@ -550,6 +551,7 @@
     queue.move = !queue.fly && (queue.special || !!roomExits[c] || !!D[c] || /^go\s/.test(c));
     sendAuto(c);
     if (panel && wMode) render();
+    if (queue.bai && /^apprentice /.test(c)) { queue.bai.sent = true; queue.timer = setTimeout(finishBai, 3000); return; }
     if (queue.fly) queue.timer = setTimeout(() => stopQueue('飞了 15 秒还没落地，后面的指令不发了。'), 15000);
     else if (queue.move) {
       // 上船之类会先进船舱再过几秒到岸：第一次换房间不算，等到岸（最多 20 秒）
@@ -568,10 +570,31 @@
     if (panel) { flash(m); return; }
     if (typeof window.writeToScreen === 'function') window.writeToScreen('\x1b[33m【连续指令】' + m + '\x1b[0m');
   }
+  // 拜师结果：apprentice 发出后 3 秒内的输出
+  function finishBai() {
+    if (!queue || !queue.bai) return;
+    const b = queue.bai, all = b.lines.join('\n');
+    queue = null;
+    const said = b.lines.filter((l) => /说道|说：|「/.test(l) && !/想要拜|磕头|恭喜/.test(l)).slice(0, 2).map((l) => l.slice(0, 60));
+    if (/恭喜您成为|决定拜.*为师/.test(all)) note('拜师成功！' + ((all.match(/恭喜您成为[^\n。]*/) || [''])[0]));
+    else if (/磕头请安/.test(all)) note((b.who || '他') + '已经是你的师父了。');
+    else if (/你想拜谁为师/.test(all)) note('到了以后没看到' + (b.who || '师父') + '，可能出门了，过一会再来。');
+    else if (/判师|叛师/.test(all)) note('你已经有别的门派了，' + (b.who || '他') + '不收。');
+    else if (/还没有答应/.test(all)) note((b.who || '他') + '还没答应。');
+    else note('没拜成。' + (said.length ? said.join(' ') : '没看到' + (b.who || '师父') + '的回答，看看上面的输出。'));
+  }
   function onQueueText(t) {
+    if (queue.bai && queue.bai.sent) { if (t) queue.bai.lines.push(t); if (/恭喜您成为/.test(t)) { clearTimeout(queue.timer); queue.timer = setTimeout(finishBai, 300); } return; }
     if (queue.fly && /终于赶到了/.test(t)) { queue.fly = false; queue.cmds.shift(); clearTimeout(queue.timer); queue.timer = setTimeout(qNext, 600); return; }
     if (t === '什么？') { stopQueue('「' + queue.cmds[0] + '」不是有效的指令，后面的不发了。'); return; }
     if (!queue.move && !queue.fly) return;
+    if (queue.fly && /不能乱跑/.test(t) && !queue.outRetry && W) {
+      // 以为在室外其实在屋里（位置没认出来）：按名字再认一次，先走到室外再飞
+      queue.outRetry = true;
+      if (!wCur) { const c = W.byT[roomTitle] || []; if (c.length === 1) wCur = c[0]; }
+      const out = wCur && wOutdoor(wCur);
+      if (out && out.length) { queue.fly = false; clearTimeout(queue.timer); queue.cmds.unshift(...out); note('在屋里飞不了，先走到室外：' + out.join(';')); queue.timer = setTimeout(qNext, 600); return; }
+    }
     if (queue.fly && /正在战斗|正躺着|做牢|不能乱跑|有点古怪|没有这个城市|无法驾驭|不对劲|负荷|还没有住房|正在飞行中/.test(t)) {
       stopQueue('fly 没飞成：' + t.slice(0, 30)); return;
     }
@@ -927,7 +950,16 @@
     stopRoute(null);
     closeWiki();
     // 游戏这边知道自己在哪：按百科地图重新规划（近的直接走，在室内先走到室外再 fly）
+    const then = typeof d.then === 'string' && /^apprentice [a-z][\w -]{0,40}$/i.test(d.then) ? d.then : '';
     const plan = d.file && W && W.rooms[d.file] && wPlan(d.file);
+    if (then) {
+      // 一键拜师：走到师父那里，发 apprentice，几秒内看师父怎么回
+      const q = (plan || cmds.filter((c) => !/^apprentice /.test(c))).concat([then]);
+      runQueue(q);
+      if (queue) queue.bai = { who: String(d.who || '').slice(0, 20), lines: [] };
+      note('去拜' + (d.who || '师') + '：' + (q.length > 1 ? '先走 ' + (q.length - 1) + ' 条指令，' : '') + '到了发 ' + then + '。');
+      return true;
+    }
     if (plan) { if (!plan.length) { note('已经在这里了。'); return true; } wWalk(d.file); note('按百科路线走：' + plan.length + ' 条指令。'); return true; }
     runQueue(cmds);
     note('按百科路线走：' + cmds.length + ' 条指令。');
