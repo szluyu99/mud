@@ -832,8 +832,7 @@ function logincheck(id,pass) {
 	$('body').css('background-size',$(window).width()+'px '+$(window).height()+'px');
 	ansi_flag = true;
 	hudongob.html('');
-	chatob.html('登录中......<br>');
-	chatob.html('欢迎来到'+ titled+'！<br>');
+	chatob.html('');
 	setCookie('myid',myid);
 	setCookie('mypass',mypass);
 	zjStore.setItem('myid',myid);

@@ -1005,8 +1005,12 @@
     fr.src = url; fr.style.cssText = 'flex:1;width:100%;border:0;background:#111';
     wikiBox.append(bar, fr);
     document.body.appendChild(wikiBox);
+    const tb = document.getElementById('mudwasm-bar'); if (tb) tb.style.visibility = 'hidden';   // 工具栏 z-index 更高，会压在「返回游戏」上
   }
-  function closeWiki() { if (wikiBox) { wikiBox.remove(); wikiBox = null; } }
+  function closeWiki() {
+    if (wikiBox) { wikiBox.remove(); wikiBox = null; }
+    const tb = document.getElementById('mudwasm-bar'); if (tb) tb.style.visibility = '';
+  }
   window.MudMiniMap.wiki = (q) => { wLoad(); if (!GAME_ID) return false; openWiki(q || ''); return true; };
   window.MudMiniMap.wikiReady = () => !!W;
   // main.js 直接按名字调用 writeToPop，包一层 window.writeToPop 拦不住；改为看 #hudong 里的内容：

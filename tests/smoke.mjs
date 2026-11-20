@@ -90,6 +90,7 @@ for (const g of GAMES) {
     await page.evaluate(() => document.querySelectorAll('#exits td')[4].click()); await page.waitForTimeout(400);
     check(g + ': minimap panel opens', await page.evaluate(() => !!document.querySelector('[data-mm=close]')));
     await page.evaluate(() => document.querySelector('[data-mm=close]')?.click());
+    check(g + ': no welcome banner in the chat area', !/欢迎来到/.test(await page.evaluate(() => document.querySelector('div#chat')?.innerText || '')));
     if (g === 'zjmud') await zjmudExtras(page, ctx);
   } catch (e) { check(g + ': run', false, String(e).slice(0, 200)); }
   check(g + ': no page errors', !errs.length, errs);
@@ -125,6 +126,9 @@ async function zjmudExtras(page, ctx) {
   let h2 = '';
   for (let i = 0; i < 20 && fr && h2 !== '平一指'; i++) { h2 = await fr.evaluate(() => document.querySelector('main h2')?.textContent || '').catch(() => ''); await page.waitForTimeout(250); }
   check('zjmud: "wiki 平一指" opens the npc page in an overlay', frameOk && h2 === '平一指', h2);
+  // 浮层打开时右上角工具栏要藏起来，不然压在「返回游戏」上
+  const hid = await page.evaluate(() => getComputedStyle(document.getElementById('mudwasm-bar')).visibility);
+  check('zjmud: toolbar hidden while the wiki overlay is open', hid === 'hidden', hid);
   // 带我去 inside the overlay: overlay closes, the game walks there
   if (fr) await fr.evaluate(() => document.querySelector('button[data-go]')?.click()).catch(() => {});
   await page.waitForTimeout(500);
@@ -137,6 +141,7 @@ async function zjmudExtras(page, ctx) {
   if (btn) { await page.evaluate(() => document.querySelector('[data-mm=wikibtn]').click()); await page.waitForTimeout(800); }
   check('zjmud: 查百科 opens overlay', !!(await page.$('[data-mm=wikiclose]')));
   await page.evaluate(() => document.querySelector('[data-mm=wikiclose]')?.click());
+  check('zjmud: toolbar back after closing the overlay', (await page.evaluate(() => getComputedStyle(document.getElementById('mudwasm-bar')).visibility)) === 'visible');
   // stand-alone wiki tab hands the route to the open game over BroadcastChannel
   const p2 = await ctx.newPage(), e2 = [];
   watch(p2, e2, 'wiki tab');
