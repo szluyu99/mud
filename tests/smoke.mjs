@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 
 const site = path.resolve(process.argv[2] || 'site');
 const only = process.argv.slice(3);
-const GAMES = ['zjmud', 'zjmudhell', 'zjdyzj', 'shujian3', 'dtxyzjb'].filter((g) => !only.length || only.includes(g));
+const GAMES = ['zjmud', 'zjmudhell', 'zjdyzj', 'shujian3', 'dtxyzjb', 'zjrogue'].filter((g) => !only.length || only.includes(g));
 const chrome = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser']
   .find((p) => p && fs.existsSync(p));
@@ -94,6 +94,13 @@ for (const g of GAMES) {
     await page.evaluate(() => document.querySelector('[data-mm=close]')?.click());
     check(g + ': no welcome banner in the chat area', !/欢迎来到/.test(await page.evaluate(() => document.querySelector('div#chat')?.innerText || '')));
     if (g === 'zjmud') await zjmudExtras(page, ctx);
+    if (g === 'zjrogue') {
+      check('zjrogue: own game id (separate save)', (await page.evaluate(() => MudMiniMap.gameId)) === 'zjrogue');
+      check('zjrogue: wiki data loads', await until(page, () => MudMiniMap.wikiReady(), 15000));
+      await page.evaluate(() => MudWasm.sync());
+      const ids = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('mudwasm', 1); q.onsuccess = () => { const t = q.result.transaction(q.result.objectStoreNames[0]).objectStore(q.result.objectStoreNames[0]).getAllKeys(); t.onsuccess = () => r(t.result); }; q.onerror = () => r([]); }));
+      check('zjrogue: saved under its own key', ids.includes('zjrogue') && !ids.includes('zjmud'), ids);
+    }
   } catch (e) { check(g + ': run', false, String(e).slice(0, 200)); }
   check(g + ': no page errors', !errs.length, errs);
   await ctx.close();

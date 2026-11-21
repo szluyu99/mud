@@ -12,6 +12,7 @@
 | `games/zjdyzj` | 终极地狱·指间MUD版 | [fluffos/mudlibs](https://github.com/fluffos/mudlibs) `libs/zjdyzj` | 8089 | 8090 |
 | `games/shujian3` | 书剑3 | [fluffos/mudlibs](https://github.com/fluffos/mudlibs) `libs/shujian3` | 8091 | 8092 |
 | `games/dtxyzjb` | 大唐西游·指间版 | [fluffos/mudlibs](https://github.com/fluffos/mudlibs) `libs/dtxyzjb` | 8093 | 8094 |
+| `games/zjrogue` | 书剑江湖·远征（实验，仅单机版） | 覆盖层，基于 `games/zjmud` | — | — |
 
 每个游戏的网页端口同时提供 WebSocket 和网页客户端，浏览器打开 `http://<主机>:<网页端口>/` 会自动连接。zjmud 和后面四个“指间”游戏是按钮式手机界面，登录必须走网页客户端；jy、es2、xyj 也可以用 telnet 客户端直连。
 
@@ -21,6 +22,7 @@
 
 FluffOS 官方的 WebAssembly 驱动可以把整个 MUD 跑在浏览器标签页里。单机版把所有游戏的 mudlib 打包成静态文件，用 GitHub Pages 发布，打开网页就能玩，不需要任何服务端。
 
+- `games/zjrogue` 是覆盖层：构建时先拷一份 `games/zjmud`，再把 `games/zjrogue/{mudlib,www}` 里的文件按相同路径盖上去。这里只放「江湖远征」新增或改动的文件，书剑江湖原版的修复会自动带进来；改原版大文件时尽量只加挂钩点，新逻辑放新文件。页面在 `/mud/zjrogue/`，存档与书剑江湖分开。
 - 存档保存在浏览器的 IndexedDB 里，刷新或关闭页面不会丢。换浏览器、清理网站数据会丢，所以页面右上角「存档」菜单里提供「导出存档 / 导入存档」，可以备份成 JSON 文件；「重置」清空当前游戏的存档。
 - 「存档 → 巫师」可以把自己的角色设为巫师（写入 `adm/etc/wizlist`，随存档保存），刷新后生效。书剑江湖的巫师命令整理在 [games/zjmud/WIZARD.md](games/zjmud/WIZARD.md)。
 - 第一次打开要下载驱动（约 4 MB）和 mudlib（es2 0.8 MB、jy 1.2 MB、xyj 6.4 MB、zjmud 2.9 MB、指尖MUD 2.6 MB、终极地狱 3.0 MB、书剑3 6.7 MB、大唐西游 11 MB），启动需要 1–2 秒。

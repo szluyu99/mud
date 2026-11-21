@@ -6,7 +6,7 @@
 //   site/<game>/mudlib.bin.gz  packed mudlib
 // usage: node web/build.mjs [--driver DIR] [--out DIR]
 //   DIR defaults: driver = $FLUFFOS_WASM or web/driver ; out = site
-import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto'; import { execFileSync } from 'node:child_process';
+import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import crypto from 'node:crypto'; import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { genWiki } from './wiki/gen.mjs';
 
@@ -24,7 +24,33 @@ export const GAMES = [
   { id: 'zjdyzj', config: 'config.zj', title: '终极地狱·指间版', desc: '地狱无门，投胎转世选品质，图形按钮界面', zj: true },
   { id: 'shujian3', config: 'config.zj', title: '书剑3', desc: '独立书剑代码，副本与帮会，图形按钮界面', zj: true },
   { id: 'dtxyzjb', config: 'config.zj', title: '大唐西游·指间版', desc: '西游题材指间版，数据较大，图形按钮界面', zj: true },
+  // 覆盖层：先拷 base 游戏，再把 games/<id>/ 里的文件盖上去（只放新增或改过的文件）
+  { id: 'zjrogue', base: 'zjmud', config: 'config.zj', title: '书剑江湖·远征', desc: '实验版：在书剑江湖上做「江湖远征」新玩法，开发中。存档和书剑江湖分开', zj: true, wiki: true },
 ];
+
+// games/<id>/{www,mudlib}；带 base 的游戏先拷 base 再叠上自己的文件，放到临时目录
+const stageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mudbuild-'));
+process.on('exit', () => fs.rmSync(stageRoot, { recursive: true, force: true }));
+function gameDir(g, sub) {
+  if (!g.base) return path.join(root, 'games', g.id, sub);
+  const dst = path.join(stageRoot, g.id, sub);
+  if (fs.existsSync(dst)) return dst;
+  fs.cpSync(path.join(root, 'games', g.base, sub), dst, { recursive: true });
+  const over = path.join(root, 'games', g.id, sub);
+  let n = 0;
+  if (fs.existsSync(over)) {
+    (function walk(d, rel) {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.name === '.gitkeep' || e.name === '.DS_Store') continue;
+        const r = path.join(rel, e.name);
+        if (e.isDirectory()) walk(path.join(d, e.name), r);
+        else { fs.mkdirSync(path.dirname(path.join(dst, r)), { recursive: true }); fs.copyFileSync(path.join(d, e.name), path.join(dst, r)); n++; }
+      }
+    })(over, '');
+  }
+  console.log(`${g.id}/${sub}: ${g.base} + ${n} overlay file(s)`);
+  return dst;
+}
 
 for (const f of ['fluffos.js', 'fluffos.wasm']) {
   if (!fs.existsSync(path.join(driverDir, f))) {
@@ -132,7 +158,7 @@ function patchZjmud(dir, g) {
 
 for (const g of GAMES) {
   const dst = path.join(out, g.id);
-  fs.cpSync(path.join(root, 'games', g.id, 'www'), dst, { recursive: true });
+  fs.cpSync(gameDir(g, 'www'), dst, { recursive: true });
   for (const junk of ['AGENTS.md', 'README.md', 'wasm']) fs.rmSync(path.join(dst, junk), { recursive: true, force: true });
   writeManifest(dst, g.id, g.title + ' · 单机版', g.title, '../');
   if (g.zj) patchZjmud(dst, g);
@@ -140,7 +166,7 @@ for (const g of GAMES) {
     const fi = path.join(dst, 'index.html');
     fs.writeFileSync(fi, patchTerminalClient(fs.readFileSync(fi, 'utf8'), g));
   }
-  execFileSync(process.execPath, [path.join(root, 'web/pack.mjs'), path.join(root, 'games', g.id, 'mudlib'), path.join(dst, 'mudlib.bin.gz')], { stdio: 'inherit' });
+  execFileSync(process.execPath, [path.join(root, 'web/pack.mjs'), gameDir(g, 'mudlib'), path.join(dst, 'mudlib.bin.gz')], { stdio: 'inherit' });
 }
 
 // ---------- offline wiki: data read out of the running mudlib (web/wiki/gen.mjs) ----------
@@ -151,7 +177,7 @@ for (const g of GAMES) {
   const list = [];
   for (const g of GAMES.filter((x) => x.wiki)) {
     const t0 = Date.now();
-    const data = await genWiki({ driverDir, mudlibDir: path.join(root, 'games', g.id, 'mudlib'), config: g.config, title: g.title });
+    const data = await genWiki({ driverDir, mudlibDir: gameDir(g, 'mudlib'), config: g.config, title: g.title });
     fs.writeFileSync(path.join(wdir, g.id + '.json'), JSON.stringify(data));
     list.push({ id: g.id, title: g.title });
     console.log(`wiki ${g.id}: ${Object.keys(data.skills).length} skills, ${Object.keys(data.npcs).length} npcs, ${Object.keys(data.items).length} items, ${Object.keys(data.rooms).length} rooms (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
