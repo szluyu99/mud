@@ -283,7 +283,8 @@ async function zjrogueExtras(page) {
     const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());
     // 这一趟只在前四关各选一次天赋，所以是 4 个
     const base = m ? 8 + 4 * 2 + ((+m[1]) - 1) * 3 : 0;
-    check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
+    check('zjrogue: settle shows 本局统计', await waitText(/本局用时 \d+/, 5000), (await text()).slice(-160));
+  check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
   check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
   }
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);

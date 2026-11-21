@@ -471,6 +471,7 @@ int on_die(object me)
 
 	if (! s) return 0;
 	s["life"] -= 1;
+	s["deaths"] = (s["deaths"] || 0) + 1;
 	if (s["life"] <= 0)
 	{
 		tell_object(me, HIR "三条命都用完了，本局远征结束。局内天赋消散。\n" NOR);
@@ -566,7 +567,7 @@ int start(object me, string style)
 
 	s = ([ "stage":0, "life":MAX_LIFE + (has_perk(me, "life") ? 1 : 0),
 	       "points":has_perk(me, "point") ? 1 : 0, "talents":({}),
-	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time() ]);
+	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0 ]);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
 	s["buff"]["apply/damage"] = 30;
@@ -678,6 +679,24 @@ int resume(object me)
 	return 1;
 }
 
+string fmt_time(int sec)
+{
+	if (sec < 60) return sec + " 秒";
+	return sprintf("%d 分 %02d 秒", sec / 60, sec % 60);
+}
+
+string tally(string *names)
+{
+	mapping c = ([]);
+	string *out = ({});
+
+	if (! sizeof(names)) return "无";
+	foreach (string n in names) c[n] = (c[n] || 0) + 1;
+	foreach (string n in sort_array(keys(c), 1))
+		out += ({ c[n] > 1 ? n + "×" + c[n] : n });
+	return implode(out, "、");
+}
+
 int settle(object me)
 {
 	mapping s = state(me);
@@ -690,7 +709,9 @@ int settle(object me)
 	give_spoil(me, s["style"]);
 	me->add("yuanzheng/prestige", gain);
 	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
-		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n");
+		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n" +
+		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
+		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n");
 	end_run(me);
 	return 1;
 }

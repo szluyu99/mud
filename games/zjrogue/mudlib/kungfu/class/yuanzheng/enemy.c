@@ -94,8 +94,18 @@ varargs int receive_damage(string type, int damage, object who)
 {
 	int r = ::receive_damage(type, damage, who);
 
-	if (type == "qi" && objectp(this_object()) && ! query_temp("yz_dead") &&
-	    query("qi") * 4 <= query("max_qi"))
+	if (! objectp(this_object()) || query_temp("yz_dead")) return r;
+
+	// 匪首剩一半血时会红了眼：先判这个再判生死，否则一拳打穿五十到二十五
+	// 的区间就永远看不到。
+	if (query("yz_kind") == "boss" && ! query_temp("yz_rage") &&
+	    query("qi") * 2 <= query("max_qi"))
+	{
+		set_temp("yz_rage", 1);
+		add_temp("apply/attack", 10);
+		message_vision(HIR "$N把牙一咬，眼睛红了，出手一下子狠了起来！\n" NOR, this_object());
+	}
+	if (type == "qi" && query("qi") * 4 <= query("max_qi"))
 		die(who);
 	return r;
 }
