@@ -12,12 +12,17 @@ int menu(object me)
 	s = me->query_temp("yuanzheng");
 	str = ZJOBLONG "江湖远征\n" + YZ_D->status(me) + "\n";
 	if (! s)
-		str += "五关：剿匪、夺宝、寻访、截杀、终局。三条命，通关后结算远征声望。\n";
+		str += "先选一个流派：剑客走剑法连招，拳师空手贴身短打，刀客血厚刚猛。\n"
+		     + "五关：剿匪、夺宝、寻访、截杀、终局。三条命，通关后结算远征声望。\n";
 	else
 		str += "提示：跟着「目标」做，打完点下面的按钮选天赋。\n";
 	str += ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
 	if (! s)
-		str += "开始远征:yuanzheng start" ZJSEP;
+	{
+		str += "剑客:yuanzheng start sword" ZJSEP;
+		str += "拳师:yuanzheng start fist" ZJSEP;
+		str += "刀客:yuanzheng start blade" ZJSEP;
+	}
 	else
 	{
 		str += "看当前目标:yuanzheng status" ZJSEP;
@@ -40,12 +45,13 @@ int main(object me, string arg)
 
 	if (! userp(me)) return 0;
 	if (! arg || arg == "") return menu(me);
+	if (sscanf(arg, "start %s", sub) == 1) return YZ_D->start(me, sub);
 	if (sscanf(arg, "choose %d", n) == 1) return YZ_D->choose(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)
 	{
-	case "start":	return YZ_D->start(me);
+	case "start":	return YZ_D->start(me, "");
 	case "status":	write(YZ_D->status(me) + "\n"); return 1;
 	case "talents":	YZ_D->talent_menu(me); return 1;
 	case "submit":	return YZ_D->submit(me);
@@ -54,12 +60,13 @@ int main(object me, string arg)
 	case "debugwin":	return YZ_D->debug_win(me);
 	case "where":	return YZ_D->where(me);
 	}
-	return notify_fail("用法：yuanzheng（菜单）、start、status、choose 1-3、submit、settle、abandon。\n");
+	return notify_fail("用法：yuanzheng（菜单）、start sword|fist|blade、status、choose 1-3、submit、settle、abandon。\n");
 }
 
 int help(object me)
 {
-	write("远征：五关依次是剿匪、夺宝、寻访、截杀、终局。每过一关得到 1 点属性点并三选一天赋；\n"
-	      "三条命，倒下回客店；五关全过后 yuanzheng settle 结算远征声望。\n");
+	write("远征：开局先选流派（剑客/拳师/刀客），五关依次是剿匪、夺宝、寻访、截杀、终局。\n"
+	      "每过一关得到 1 点属性点并三选一天赋（天赋按流派给）；三条命，倒下回客店；\n"
+	      "五关全过后 yuanzheng settle 结算远征声望。\n");
 	return 1;
 }

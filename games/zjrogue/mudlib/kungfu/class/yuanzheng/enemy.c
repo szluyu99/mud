@@ -46,8 +46,8 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 	setup();
 
 	lvl = 5 + stage * 12;
-	qi = 6 + stage * 10;
-	if (kind == "boss") qi += 18;
+	// 局内给了流派底子之后，原来那点血一两下就没了；按关卡抬上来，一关大约四五下
+	qi = 160 + stage * 130 + (kind == "boss" ? 160 : 0);
 
 	set("str", 18 + stage * 2);
 	set("con", 18 + stage * 2);

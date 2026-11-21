@@ -233,14 +233,18 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng'); await page.waitForTimeout(1200);
   check('zjrogue: 远征菜单 opens', /江湖远征/.test(await text()) && /开始远征/.test(await page.evaluate(() => document.body.innerHTML)));
   await send(page, 'yuanzheng start'); await page.waitForTimeout(1500);
+  const pick = await page.evaluate(() => document.body.innerHTML);
+  check('zjrogue: 开局要先选流派', /剑客/.test(pick) && /拳师/.test(pick) && /刀客/.test(pick), pick.slice(0, 200));
+  await send(page, 'yuanzheng start sword'); await page.waitForTimeout(1500);
   check('zjrogue: 远征 starts with three lives', /三条命/.test(await text()));
+  check('zjrogue: 剑客带着长剑开局', /长剑/.test(await out()), await out());
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
 
   // 一、剿匪：走到广场打死恶汉
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 60000), await out());
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
-  check('zjrogue: first talent is 铁骨', /铁骨/.test(await out()));
+  check('zjrogue: first talent follows the style', /起手式/.test(await out()));
 
   // 二、夺宝：打死守卫拿宝物，回客店上交
   await send(page, 'goto /d/city/nandajie1'); await page.waitForTimeout(2500);
@@ -265,6 +269,7 @@ async function zjrogueExtras(page) {
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
   check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
+  check('zjrogue: 结算时局内兵器收走', /兵器已经还回去了/.test(await out()), await out());
   // 天赋/临时技能都要还原，不然等于白送属性
   const st1 = await stats();
   const key = (x) => [x.a.con, x.a.dex, x.a.int, x.a.str, x.p.combat_exp].join('/');

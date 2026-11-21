@@ -21,28 +21,76 @@ mapping *stages = ({
 	   "hint":"回广场迎战匪首，赢下这一局（kill feishou）", "boss":1 ])
 });
 
-mapping *talents = ({
-	([ "name":"铁骨", "desc":"气血上限 +120", "key":"max_qi", "value":120 ]),
-	([ "name":"轻身", "desc":"闪避 +12", "key":"dodge", "value":12 ]),
-	([ "name":"破甲", "desc":"攻击 +12", "key":"attack", "value":12 ]),
-	([ "name":"护体", "desc":"防御 +12", "key":"defense", "value":12 ]),
-	([ "name":"刀枪不入", "desc":"护甲 +25", "key":"armor", "value":25 ]),
-	([ "name":"力拔山河", "desc":"伤害 +15", "key":"damage", "value":15 ]),
-	([ "name":"凝神", "desc":"精力上限 +100", "key":"max_jingli", "value":100 ]),
-	([ "name":"气海", "desc":"内力上限 +120", "key":"max_neili", "value":120 ]),
-	([ "name":"根骨", "desc":"根骨 +2", "key":"con", "value":2 ]),
-	([ "name":"身法", "desc":"身法 +2", "key":"dex", "value":2 ]),
-	([ "name":"悟性", "desc":"悟性 +2", "key":"int", "value":2 ]),
-	([ "name":"膂力", "desc":"膂力 +2", "key":"str", "value":2 ]),
-	([ "name":"招架精通", "desc":"招架 +12", "key":"parry", "value":12 ]),
-	([ "name":"内功护体", "desc":"防御 +20", "key":"defense", "value":20 ]),
-	([ "name":"先发制人", "desc":"攻击 +20", "key":"attack", "value":20 ]),
-	([ "name":"铜皮铁骨", "desc":"护甲 +40", "key":"armor", "value":40 ]),
-	([ "name":"狂战", "desc":"伤害 +25", "key":"damage", "value":25 ]),
-	([ "name":"回春", "desc":"气血上限 +220", "key":"max_qi", "value":220 ]),
-	([ "name":"灵台清明", "desc":"精力上限 +220", "key":"max_jingli", "value":220 ]),
-	([ "name":"深不可测", "desc":"内力上限 +220", "key":"max_neili", "value":220 ])
-});
+// ---- 开局构筑：三种流派，各有一套初始功夫与 15 个专属天赋 ----
+mapping styles = ([
+	"sword": ([ "name" : "剑客",
+		    "desc" : "长剑在手，招架最稳，出手快，靠剑法连招取势",
+		    "weapon" : "/clone/weapon/changjian",
+		    "skills" : ([ "sword" : 70, "parry" : 50, "dodge" : 40, "force" : 30 ]) ]),
+	"fist" : ([ "name" : "拳师",
+		    "desc" : "空手对敌，身法最灵，贴身短打又快又狠",
+		    "skills" : ([ "unarmed" : 80, "cuff" : 70, "dodge" : 60, "parry" : 40, "force" : 30 ]) ]),
+	"blade": ([ "name" : "刀客",
+		    "desc" : "单刀走刚猛一路，血厚甲硬，一刀是一刀",
+		    "weapon" : "/clone/weapon/dadao",
+		    "skills" : ([ "blade" : 70, "parry" : 40, "dodge" : 30, "force" : 40 ]) ])
+]);
+
+// 每个流派 5 关 x 3 选 1，按关卡顺序给，不重复
+mapping talents = ([
+	"sword" : ({
+		([ "name":"起手式", "desc":"攻击 +12", "key":"attack", "value":12 ]),
+		([ "name":"以逸待劳", "desc":"防御 +12", "key":"defense", "value":12 ]),
+		([ "name":"养气", "desc":"气血上限 +120", "key":"max_qi", "value":120 ]),
+		([ "name":"剑走轻灵", "desc":"闪避 +12", "key":"dodge", "value":12 ]),
+		([ "name":"格挡", "desc":"招架 +14", "key":"parry", "value":14 ]),
+		([ "name":"抢攻", "desc":"攻击 +16", "key":"attack", "value":16 ]),
+		([ "name":"剑势", "desc":"伤害 +18", "key":"damage", "value":18 ]),
+		([ "name":"卸力", "desc":"护甲 +25", "key":"armor", "value":25 ]),
+		([ "name":"内力充盈", "desc":"内力上限 +150", "key":"max_neili", "value":150 ]),
+		([ "name":"身法", "desc":"身法 +2", "key":"dex", "value":2 ]),
+		([ "name":"膂力", "desc":"膂力 +2", "key":"str", "value":2 ]),
+		([ "name":"根骨", "desc":"根骨 +2", "key":"con", "value":2 ]),
+		([ "name":"万剑归宗", "desc":"攻击 +30", "key":"attack", "value":30 ]),
+		([ "name":"无招胜有招", "desc":"伤害 +30", "key":"damage", "value":30 ]),
+		([ "name":"心如止水", "desc":"气血上限 +260", "key":"max_qi", "value":260 ])
+	}),
+	"fist" : ({
+		([ "name":"铁拳", "desc":"攻击 +14", "key":"attack", "value":14 ]),
+		([ "name":"铁布衫", "desc":"护甲 +20", "key":"armor", "value":20 ]),
+		([ "name":"桩功", "desc":"气血上限 +120", "key":"max_qi", "value":120 ]),
+		([ "name":"游身", "desc":"闪避 +16", "key":"dodge", "value":16 ]),
+		([ "name":"化劲", "desc":"招架 +12", "key":"parry", "value":12 ]),
+		([ "name":"短打", "desc":"攻击 +18", "key":"attack", "value":18 ]),
+		([ "name":"寸劲", "desc":"伤害 +20", "key":"damage", "value":20 ]),
+		([ "name":"卸力", "desc":"防御 +20", "key":"defense", "value":20 ]),
+		([ "name":"气沉丹田", "desc":"内力上限 +150", "key":"max_neili", "value":150 ]),
+		([ "name":"身法", "desc":"身法 +2", "key":"dex", "value":2 ]),
+		([ "name":"根骨", "desc":"根骨 +2", "key":"con", "value":2 ]),
+		([ "name":"膂力", "desc":"膂力 +2", "key":"str", "value":2 ]),
+		([ "name":"崩拳", "desc":"伤害 +32", "key":"damage", "value":32 ]),
+		([ "name":"金刚不坏", "desc":"护甲 +50", "key":"armor", "value":50 ]),
+		([ "name":"百炼成钢", "desc":"攻击 +30", "key":"attack", "value":30 ])
+	}),
+	"blade" : ({
+		([ "name":"横刀", "desc":"攻击 +16", "key":"attack", "value":16 ]),
+		([ "name":"厚甲", "desc":"护甲 +25", "key":"armor", "value":25 ]),
+		([ "name":"血勇", "desc":"气血上限 +150", "key":"max_qi", "value":150 ]),
+		([ "name":"刀风", "desc":"伤害 +16", "key":"damage", "value":16 ]),
+		([ "name":"沉稳", "desc":"招架 +16", "key":"parry", "value":16 ]),
+		([ "name":"力劈", "desc":"攻击 +20", "key":"attack", "value":20 ]),
+		([ "name":"血战", "desc":"伤害 +22", "key":"damage", "value":22 ]),
+		([ "name":"铁甲", "desc":"护甲 +35", "key":"armor", "value":35 ]),
+		([ "name":"气海", "desc":"内力上限 +150", "key":"max_neili", "value":150 ]),
+		([ "name":"膂力", "desc":"膂力 +2", "key":"str", "value":2 ]),
+		([ "name":"根骨", "desc":"根骨 +2", "key":"con", "value":2 ]),
+		([ "name":"身法", "desc":"身法 +2", "key":"dex", "value":2 ]),
+		([ "name":"一刀两断", "desc":"伤害 +40", "key":"damage", "value":40 ]),
+		([ "name":"浴血", "desc":"气血上限 +300", "key":"max_qi", "value":300 ]),
+		([ "name":"刀山", "desc":"攻击 +34", "key":"attack", "value":34 ])
+	})
+]);
+
 
 void create()
 {
@@ -87,6 +135,10 @@ mapping state(object me)
 		foreach (k, v in s["buff"]) me->add_temp(k, v);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
 	me->set_temp("yuanzheng", s);
+	// 局内武器在结算时会被收走，重登后按流派补一把，别让剑客空手上阵
+	if (stringp(s["style"]) && mapp(styles[s["style"]]) &&
+	    stringp(styles[s["style"]]["weapon"]) && ! has_weapon(me))
+		give_weapon(me, styles[s["style"]]["weapon"]);
 	return s;
 }
 
@@ -129,6 +181,13 @@ void end_run(object me)
 	if (mapp(s["raw"]))
 		foreach (k, v in s["raw"]) me->add(k, -v);
 	clean_world(me);
+	// 局内兵器是借的，结算/放弃时收回；留一句提示，免得玩家以为东西莫名没了
+	foreach (object ob in all_inventory(me))
+		if (ob->query("yz_weapon"))
+		{
+			destruct(ob);
+			tell_object(me, "（局内借来的兵器已经还回去了）\n");
+		}
 	if (! undefinedp(s["wimpy"])) me->set("env/wimpy", s["wimpy"]);
 	if (mapp(s["skills"]))
 		foreach (string sk, int old in s["skills"]) me->set_skill(sk, old);
@@ -255,15 +314,19 @@ void begin_stage(object me)
 void talent_menu(object me)
 {
 	mapping s = state(me), t;
+	mapping *pool;
 	int i, base;
 	string str;
 
 	if (! s) return;
 	base = (s["stage"] < 1 ? 0 : s["stage"] - 1) * 3;
+	pool = talents[s["style"]];
+	if (! arrayp(pool)) pool = talents["fist"];
+	base = base % sizeof(pool);
 	str = ZJOBLONG "选一个天赋（属性点：" + s["points"] + "）\n" ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
 	for (i = 0; i < 3; i++)
 	{
-		t = talents[(base + i) % sizeof(talents)];
+		t = pool[(base + i) % sizeof(pool)];
 		str += t["name"] + " " + t["desc"] + ":yuanzheng choose " + (i + 1) + ZJSEP;
 	}
 	tell_object(me, str + "\n");
@@ -393,38 +456,93 @@ string status(object me)
 		me->query("yuanzheng/prestige"));
 }
 
-int start(object me)
+int has_weapon(object me)
 {
-	mapping s;
+	object ob;
+
+	foreach (ob in all_inventory(me))
+		if (ob->query("yz_weapon")) return 1;
+	return 0;
+}
+
+void give_weapon(object me, string file)
+{
+	object ob;
+
+	if (! stringp(file) || ! sizeof(file)) return;
+	ob = new(file);
+	if (! ob) return;
+	ob->set("yz_weapon", 1);
+	ob->set("no_drop", 1);
+	if (! ob->move(me))
+	{
+		destruct(ob);
+		return;
+	}
+	ob->wield();
+}
+
+void style_menu(object me)
+{
+	tell_object(me, ZJOBLONG "选一个流派开局\n" +
+		"剑客：长剑 + 剑法，招架稳，出手快\n" +
+		"拳师：空手 + 拳脚，身法最灵，贴身短打\n" +
+		"刀客：单刀 + 刀法，血厚甲硬，一刀是一刀\n" +
+		ZJOBACTS2 + ZJMENUF(3, 3, 8, 30) +
+		"剑客:yuanzheng start sword" ZJSEP +
+		"拳师:yuanzheng start fist" ZJSEP +
+		"刀客:yuanzheng start blade" ZJSEP + "\n");
+}
+
+int start(object me, string style)
+{
+	mapping s, st;
 
 	if (state(me)) return notify_fail("你已经在远征途中，先结算（yuanzheng settle）或放弃（yuanzheng abandon）。\n");
+	if (! stringp(style) || ! sizeof(style))
+	{
+		style_menu(me);
+		return 1;
+	}
+	st = styles[style];
+	if (! mapp(st)) return notify_fail("请选择流派：剑客（sword）、拳师（fist）、刀客（blade）。\n");
+
 	s = ([ "stage":0, "life":MAX_LIFE, "points":0, "talents":({}),
-	       "buff":([]), "raw":([]), "started":time() ]);
-	// 远征磨砺：新角色本身没有武功，不给点准头几乎打不中；结算时一并清掉
+	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time() ]);
+	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20;
-	s["buff"]["apply/damage"] = 40;
-	s["buff"]["apply/unarmed_damage"] = 40;
+	s["buff"]["apply/damage"] = 30;
 	me->add_temp("apply/attack", 20);
-	me->add_temp("apply/damage", 40);
-	me->add_temp("apply/unarmed_damage", 40);
+	me->add_temp("apply/damage", 30);
+	if (style == "fist")
+	{
+		s["buff"]["apply/unarmed_damage"] = 50;
+		me->add_temp("apply/unarmed_damage", 50);
+	}
+	if (style == "blade")
+	{
+		s["buff"]["apply/armor"] = 10;
+		me->add_temp("apply/armor", 10);
+	}
 	// 关掉自动逃跑：远征的对手本来就不强，一跑出房间这一关就等于断了
 	s["wimpy"] = me->query("env/wimpy");
 	me->set("env/wimpy", 0);
-	// 新角色没有武功，出手几乎打不中；局内借一段「基本功夫」，结算时还原
-	s["skills"] = ([]);
-	foreach (string sk in ({ "unarmed", "dodge", "parry", "force", "sword", "blade", "staff", "cuff", "finger", "strike", "hand", "claw" }))
-	{
-		int old = me->query_skill(sk);
-		s["skills"][sk] = old;
-		if (old < 60) me->set_skill(sk, old + 40);
-	}
+	// 新角色没有武功，出手几乎打不中；按流派借一段基本功夫，结算时还原
+	if (mapp(st["skills"]))
+		foreach (string sk, int lv in st["skills"])
+		{
+			s["skills"][sk] = me->query_skill(sk);
+			me->set_skill(sk, s["skills"][sk] + lv);
+		}
 	// 经验差太多会被系统判成完全打不中，局内临时补一段；raw 记的是增量，结算时减回去
 	me->add("combat_exp", 30000);
 	s["raw"]["combat_exp"] = (s["raw"]["combat_exp"] || 0) + 30000;
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
-	tell_object(me, "你踏上了江湖远征：五关，三条命。\n" +
+	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
+	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，三条命。\n" +
+		st["desc"] + "\n" +
 		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n");
 	begin_stage(me);
 	return 1;
@@ -433,13 +551,16 @@ int start(object me)
 int choose(object me, int n)
 {
 	mapping s = state(me), t;
+	mapping *pool;
 	int base;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (s["points"] < 1) return notify_fail("你没有可用的属性点。\n");
 	if (n < 1 || n > 3) return notify_fail("请选择 1、2 或 3。\n");
-	base = (s["stage"] < 1 ? 0 : s["stage"] - 1) * 3;
-	t = talents[(base + n - 1) % sizeof(talents)];
+	pool = talents[s["style"]];
+	if (! arrayp(pool)) pool = talents["fist"];
+	base = ((s["stage"] < 1 ? 0 : s["stage"] - 1) * 3) % sizeof(pool);
+	t = pool[(base + n - 1) % sizeof(pool)];
 	apply_talent(me, t);
 	s["talents"] += ({ t["name"] });
 	s["points"] -= 1;
