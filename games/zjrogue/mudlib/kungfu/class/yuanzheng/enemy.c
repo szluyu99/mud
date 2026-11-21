@@ -92,7 +92,12 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 // 判定放在 receive_damage 里，是因为一拳可能直接打穿这四分之一血。
 varargs int receive_damage(string type, int damage, object who)
 {
-	int r = ::receive_damage(type, damage, who);
+	int r;
+
+	// 三个流派的出手方式不同：剑客靠连招叠伤害，拳师每三下一记寸劲，
+	// 刀客自己血越少越狠。加成只算在这个对手身上，换关就重新数。
+	damage = style_damage(type, damage, who);
+	r = ::receive_damage(type, damage, who);
 
 	if (! objectp(this_object()) || query_temp("yz_dead")) return r;
 
@@ -108,6 +113,48 @@ varargs int receive_damage(string type, int damage, object who)
 	if (type == "qi" && query("qi") * 4 <= query("max_qi"))
 		die(who);
 	return r;
+}
+
+int style_damage(string type, int damage, object who)
+{
+	string style;
+	int hits, t;
+
+	if (type != "qi" || ! objectp(who)) return damage;
+	style = query("yz_style");
+	if (! stringp(style)) return damage;
+
+	t = time();
+	// 五秒没接着打，连招就断了（浏览器里两拳之间有时会拖到三秒多）
+	hits = (t - query_temp("yz_last") > 5) ? 1 : query_temp("yz_hits") + 1;
+	set_temp("yz_hits", hits);
+	set_temp("yz_last", t);
+
+	if (style == "sword")
+	{
+		if (hits >= 2)
+			damage += damage * (hits > 4 ? 3 : hits - 1) / 10;
+		if (hits == 3)
+			message_vision(HIC "$N剑势连绵，一记快似一记！\n" NOR, who);
+	}
+	else if (style == "fist")
+	{
+		if (hits % 3 == 0)
+		{
+			damage *= 2;
+			message_vision(HIY "$N沉肩坐马，一记寸劲打在$n胸口！\n" NOR, who, this_object());
+		}
+	}
+	else if (style == "blade")
+	{
+		if (who->query("qi") * 2 <= who->query("max_qi"))
+		{
+			damage += damage / 4;
+			if (hits % 2 == 0)
+				message_vision(HIR "$N身上带着血，刀法反倒更凶了！\n" NOR, who);
+		}
+	}
+	return damage;
 }
 
 void heart_beat()

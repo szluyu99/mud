@@ -306,6 +306,13 @@ void clean_world(object me, int stage)
 	if (sizeof(kill)) call_out("purge", 1, kill);
 }
 
+string style_of(object me)
+{
+	mapping s = state(me);
+
+	return s ? s["style"] : "";
+}
+
 mapping cur_stage(object me)
 {
 	mapping s = state(me);
@@ -334,6 +341,7 @@ void spawn(object me, int stage)
 
 	ob = new(YZ_ENEMY);
 	ob->setup_from(me, stage, def["boss"] ? "boss" : "kill", def["who"], def["eid"]);
+	ob->set("yz_style", style_of(me));
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。\n" NOR, ob);
 	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill " + def["eid"] + "）\n" NOR);
