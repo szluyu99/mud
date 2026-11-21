@@ -166,17 +166,28 @@ object find_my_info(object me)
 	return 0;
 }
 
-void clean_world(object me, int stage)
+void purge(object *obs)
 {
 	object ob;
+
+	foreach (ob in obs)
+		if (objectp(ob)) destruct(ob);
+}
+
+// 不能在 NPC 自己的调用栈里 destruct 它：ask/kill 这些命令返回后还要用这个对象，
+// 当场销毁会报 "Bad argument 1 to EFUN call_other()"，玩家看到的就是默认错误提示。
+void clean_world(object me, int stage)
+{
+	object ob, *kill = ({});
 
 	foreach (ob in children(YZ_ENEMY))
 		if (ob && ob->query("yz_owner") == me->query("id") &&
 		    (stage < 0 || ob->query("yz_stage") == stage))
-			destruct(ob);
+			kill += ({ ob });
 	foreach (ob in children(YZ_INFO))
 		if (ob && ob->query("yz_owner") == me->query("id"))
-			destruct(ob);
+			kill += ({ ob });
+	if (sizeof(kill)) call_out("purge", 1, kill);
 }
 
 mapping cur_stage(object me)

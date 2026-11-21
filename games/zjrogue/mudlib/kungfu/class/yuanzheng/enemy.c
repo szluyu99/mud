@@ -87,6 +87,27 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 	set("qi", qi);
 }
 
+// 剩四分之一血就算被打倒：走原版逻辑会先喊一句「昏了过去」再把 NPC 搬走，
+// 那套流程对远征的对手没有意义，还会在搬动时打断战斗。
+// 判定放在 receive_damage 里，是因为一拳可能直接打穿这四分之一血。
+varargs int receive_damage(string type, int damage, object who)
+{
+	int r = ::receive_damage(type, damage, who);
+
+	if (type == "qi" && objectp(this_object()) && ! query_temp("yz_dead") &&
+	    query("qi") * 4 <= query("max_qi"))
+		die(who);
+	return r;
+}
+
+void heart_beat()
+{
+	::heart_beat();
+	if (! objectp(this_object()) || query_temp("yz_dead")) return;
+	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
+		die(query_temp("last_damage_from"));
+}
+
 object find_owner()
 {
 	object ob;
@@ -115,6 +136,10 @@ void die(object killer)
 
 	if (query_temp("yz_dead")) return;
 	set_temp("yz_dead", 1);
+	// 血条顶回去：这一刻外面还在跑 combatd 的判定，气血小于零会再喊一句「昏了过去」，
+	// 下一秒这个对象就被清场了，所以这里只要让它别触发二次死亡就够了
+	set("qi", query("max_qi"));
+	set("eff_qi", query("max_qi"));
 	if (! objectp(killer)) killer = find_owner();
 	if (objectp(env))
 		tell_room(env, HIR + me->query("name") + HIR "闷哼一声，倒了下去。\n" NOR, ({ me }));
