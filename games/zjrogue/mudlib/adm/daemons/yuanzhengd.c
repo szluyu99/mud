@@ -1017,7 +1017,7 @@ int abandon(object me)
 void give_start_spoil(object me, int n)
 {
 	string style = me->query("yuanzheng/last_style");
-	string file;
+	string file, nm;
 
 	if (! stringp(style) || ! sizeof(style)) style = "sword";
 	switch (style)
@@ -1030,12 +1030,15 @@ void give_start_spoil(object me, int n)
 	{
 		object ob = new(file);
 		if (! objectp(ob)) continue;
-		ob->set("yz_spoil", 1);
+		// 局内借来的兵器靠这个标记在结算时收回；战利品只记自己的标记，
+		// 否则下一关清场时会被清掉、玩家也留不住它
+		ob->set("yz_start_spoil", 1);
 		ob->move(me, 1);
 		if (ob->query("armor_prop/armor")) ob->wear();
 		else ob->wield();
+		nm = ob->query("name") || "战利品";
 	}
-	tell_object(me, "（行囊里还带着战利品，先穿上再说）\n");
+	tell_object(me, "（行囊里带着上次的" + (nm || "战利品") + "，已经穿上）\n");
 }
 
 void give_spoil(object me, string style)
