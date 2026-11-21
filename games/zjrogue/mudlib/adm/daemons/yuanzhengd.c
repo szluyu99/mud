@@ -92,6 +92,63 @@ mapping talents = ([
 ]);
 
 
+// ---- 局外成长：用远征声望买的常驻特权，每局开局生效 ----
+mapping *perks = ({
+	([ "id":"point", "name":"老练", "desc":"每局开局多 1 点属性点", "cost":30 ]),
+	([ "id":"life",	 "name":"命硬", "desc":"每局多 1 条命", "cost":60 ]),
+	([ "id":"atk",	 "name":"磨砺", "desc":"每局开局再加 10 点攻击", "cost":40 ]),
+	([ "id":"gain",	 "name":"名望", "desc":"结算得到的声望 +20%", "cost":80 ])
+});
+
+int has_perk(object me, string id)
+{
+	return me->query("yuanzheng/perk/" + id) ? 1 : 0;
+}
+
+void shop(object me)
+{
+	string str;
+	int i, owned;
+
+	str = ZJOBLONG "远征商店（声望：" + me->query("yuanzheng/prestige") + "）\n"
+		"这里的特权是常驻的，买到就一直生效，每局开局自动用上。\n"
+		ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
+	for (i = 0; i < sizeof(perks); i++)
+	{
+		owned = has_perk(me, perks[i]["id"]);
+		str += perks[i]["name"] + "（" + perks[i]["desc"] + "，" +
+			(owned ? "已拥有" : perks[i]["cost"] + " 声望") + "）:" +
+			(owned ? "yuanzheng shop" : "yuanzheng buy " + (i + 1)) + ZJSEP;
+	}
+	tell_object(me, str + "\n");
+}
+
+int buy(object me, int n)
+{
+	mapping p;
+	int cost;
+
+	if (n < 1 || n > sizeof(perks)) return notify_fail("没有这件特权。\n");
+	p = perks[n - 1];
+	if (has_perk(me, p["id"])) return notify_fail("你已经拥有了「" + p["name"] + "」。\n");
+	cost = p["cost"];
+	if (me->query("yuanzheng/prestige") < cost)
+		return notify_fail("声望不够：需要 " + cost + "，你只有 " + me->query("yuanzheng/prestige") + "。\n");
+	me->add("yuanzheng/prestige", -cost);
+	me->set("yuanzheng/perk/" + p["id"], 1);
+	tell_object(me, "你花 " + cost + " 点声望换到了「" + p["name"] + "」：" + p["desc"] + "。\n");
+	return 1;
+}
+
+int debug_sp(object me, int n)
+{
+	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
+	if (n < 1) n = 10;
+	me->add("yuanzheng/prestige", n);
+	tell_object(me, "（调试）声望 +" + n + "，现在是 " + me->query("yuanzheng/prestige") + "。\n");
+	return 1;
+}
+
 void create()
 {
 	seteuid(getuid());
@@ -447,11 +504,11 @@ string status(object me)
 	def = stages[s["stage"]];
 	if (s["stage"] >= sizeof(stages))
 		return sprintf("五关已经全部通过，可以结算。\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
-			s["life"], MAX_LIFE, s["points"],
+			s["life"], s["max_life"] || MAX_LIFE, s["points"],
 			sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 			me->query("yuanzheng/prestige"));
 	return sprintf("%s\n  目标：%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
-		def["title"], def["hint"], s["life"], MAX_LIFE, s["points"],
+		def["title"], def["hint"], s["life"], s["max_life"] || MAX_LIFE, s["points"],
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 		me->query("yuanzheng/prestige"));
 }
@@ -507,12 +564,13 @@ int start(object me, string style)
 	st = styles[style];
 	if (! mapp(st)) return notify_fail("请选择流派：剑客（sword）、拳师（fist）、刀客（blade）。\n");
 
-	s = ([ "stage":0, "life":MAX_LIFE, "points":0, "talents":({}),
+	s = ([ "stage":0, "life":MAX_LIFE + (has_perk(me, "life") ? 1 : 0),
+	       "points":has_perk(me, "point") ? 1 : 0, "talents":({}),
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time() ]);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
-	s["buff"]["apply/attack"] = 20;
+	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
 	s["buff"]["apply/damage"] = 30;
-	me->add_temp("apply/attack", 20);
+	me->add_temp("apply/attack", s["buff"]["apply/attack"]);
 	me->add_temp("apply/damage", 30);
 	if (style == "fist")
 	{
@@ -537,11 +595,12 @@ int start(object me, string style)
 	// 经验差太多会被系统判成完全打不中，局内临时补一段；raw 记的是增量，结算时减回去
 	me->add("combat_exp", 30000);
 	s["raw"]["combat_exp"] = (s["raw"]["combat_exp"] || 0) + 30000;
+	s["max_life"] = s["life"];
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
 	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
-	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，三条命。\n" +
+	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
 		st["desc"] + "\n" +
 		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n");
 	begin_stage(me);
@@ -588,6 +647,7 @@ int settle(object me)
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (s["stage"] < sizeof(stages)) return notify_fail("还有关卡没有通过，不能结算。\n");
 	gain = 8 + sizeof(s["talents"]) * 2 + (s["life"] - 1) * 3;
+	if (has_perk(me, "gain")) gain += gain * 20 / 100;
 	me->add("yuanzheng/prestige", gain);
 	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n");

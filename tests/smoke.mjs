@@ -221,6 +221,7 @@ async function zjrogueExtras(page) {
   check('zjrogue: born in 宝昌客栈', await waitRoom(page, '宝昌客栈', 8000), await room(page));
   const text = () => page.evaluate(() => document.body.innerText);
   const out = () => page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0] || '');
+  const waitText = async (re, ms) => { for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (re.test(await text())) return true; await page.waitForTimeout(400); } return false; };
   const waitFor = async (re, ms) => { for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (re.test(await out())) return true; await page.waitForTimeout(400); } return false; };
   const cmd = async (c, re, ms = 20000) => { await send(page, c); return waitFor(re, ms); };
   // 先开巫师权限（会重连一次），再开始远征，否则临时状态会被这次重连冲掉
@@ -235,8 +236,16 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng start'); await page.waitForTimeout(1500);
   const pick = await page.evaluate(() => document.body.innerHTML);
   check('zjrogue: 开局要先选流派', /剑客/.test(pick) && /拳师/.test(pick) && /刀客/.test(pick), pick.slice(0, 200));
+  // 局外特权：买「命硬」和「名望」，验证开局多一条命、结算多两成声望
+  await send(page, 'yuanzheng debugsp 200'); await page.waitForTimeout(1000);
+  await send(page, 'yuanzheng shop'); await page.waitForTimeout(1200);
+  check('zjrogue: 远征商店 lists perks', await waitText(/老练/, 8000) && /命硬/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng buy 2'); await page.waitForTimeout(1200);
+  check('zjrogue: 买下命硬', /换到了「命硬」/.test(await out()), await out());
+  await send(page, 'yuanzheng buy 4'); await page.waitForTimeout(1200);
+  check('zjrogue: 买下名望', /换到了「名望」/.test(await out()), await out());
   await send(page, 'yuanzheng start sword'); await page.waitForTimeout(1500);
-  check('zjrogue: 远征 starts with three lives', /三条命/.test(await text()));
+  check('zjrogue: 命硬让开局有四条命', /4 条命/.test(await text()), await text());
   check('zjrogue: 剑客带着长剑开局', /长剑/.test(await out()), await out());
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
 
@@ -267,6 +276,13 @@ async function zjrogueExtras(page) {
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: boss killed, all five stages clear', await cmd('kill feishou', /五、终局 完成/, 80000), await out());
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
+  await waitText(/获得远征声望 \d+ 点/, 15000);
+  {
+    const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());
+    // 这一趟只在前四关各选一次天赋，所以是 4 个
+    const base = m ? 8 + 4 * 2 + ((+m[1]) - 1) * 3 : 0;
+    check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
+  }
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
   check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
   check('zjrogue: 结算时局内兵器收走', /兵器已经还回去了/.test(await out()), await out());
