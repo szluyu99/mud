@@ -310,7 +310,9 @@ mapping cur_stage(object me)
 {
 	mapping s = state(me);
 
-	return s ? stages[s["stage"]] : 0;
+	if (! s) return 0;
+	if (s["stage"] < 0 || s["stage"] >= sizeof(stages)) return 0;
+	return stages[s["stage"]];
 }
 
 void spawn(object me, int stage)
@@ -344,7 +346,7 @@ int where(object me)
 	object env;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
-	def = stages[s["stage"]];
+	if (! mapp(def = cur_stage(me))) return notify_fail("五关已经打完了。\n");
 	env = environment(me);
 	write("stage=" + s["stage"] + " room=" + def["room"] +
 	      " here=" + (env ? base_name(env) : "none") + "\n");
@@ -414,7 +416,7 @@ void enemy_died(object killer, object enemy)
 {
 	string id;
 	object me;
-	mapping s;
+	mapping s, def;
 
 	if (! objectp(enemy)) return;
 	id = enemy->query("yz_owner");
@@ -423,7 +425,7 @@ void enemy_died(object killer, object enemy)
 	if (! mapp(s = state(me))) return;
 	if (enemy->query("yz_stage") != s["stage"]) return;
 
-	if (stages[s["stage"]]["type"] == "item")
+	if (mapp(def = cur_stage(me)) && def["type"] == "item")
 	{
 		object t = new(YZ_TREASURE);
 		t->set("yz_stage", s["stage"]);
@@ -437,21 +439,22 @@ void enemy_died(object killer, object enemy)
 // 线人被打听
 void ask_done(object me, object npc)
 {
-	mapping s = state(me);
+	mapping s = state(me), def;
 
 	if (! s) return;
-	if (stages[s["stage"]]["type"] != "ask") return;
+	if (! mapp(def = cur_stage(me))) return;
+	if (def["type"] != "ask") return;
 	complete_stage(me);
 }
 
 // 交宝物
 int submit(object me)
 {
-	mapping s = state(me);
+	mapping s = state(me), def;
 	object env, t;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
-	if (stages[s["stage"]]["type"] != "item")
+	if (! mapp(def = cur_stage(me)) || def["type"] != "item")
 		return notify_fail("现在不需要上交东西。\n");
 	env = environment(me);
 	if (! env || base_name(env) != BACK_ROOM)
@@ -502,12 +505,12 @@ string status(object me)
 	mapping s = state(me), def;
 
 	if (! s) return "尚未开始远征。";
-	def = stages[s["stage"]];
 	if (s["stage"] >= sizeof(stages))
 		return sprintf("五关已经全部通过，可以结算。\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
 			s["life"], s["max_life"] || MAX_LIFE, s["points"],
 			sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 			me->query("yuanzheng/prestige"));
+	def = stages[s["stage"]];
 	return sprintf("%s\n  目标：%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
 		def["title"], def["hint"], s["life"], s["max_life"] || MAX_LIFE, s["points"],
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
@@ -552,11 +555,29 @@ void style_menu(object me)
 		"刀客:yuanzheng start blade" ZJSEP + "\n");
 }
 
+// 有一局没收尾时（打完没结算、或者卡在某一关），把能做的事摆出来
+int busy_menu(object me, mapping s)
+{
+	string str;
+
+	if (s["stage"] >= sizeof(stages))
+		str = ZJOBLONG "这一局五关已经打完了，先结算，才能再开一局。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
+	else
+		str = ZJOBLONG "你还有一局远征没打完（" + stages[s["stage"]]["title"] + "）。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
+	str += "继续这一局:yuanzheng resume" ZJSEP;
+	str += "结算这一局:yuanzheng settle" ZJSEP;
+	str += "放弃这一局:yuanzheng abandon" ZJSEP;
+	tell_object(me, str + "\n");
+	return 1;
+}
+
 int start(object me, string style)
 {
 	mapping s, st;
 
-	if (state(me)) return notify_fail("你已经在远征途中，先结算（yuanzheng settle）或放弃（yuanzheng abandon）。\n");
+	// 上一局还没收尾就想开新的：给按钮，别只丢一句报错
+	s = state(me);
+	if (s) return busy_menu(me, s);
 	if (! stringp(style) || ! sizeof(style))
 	{
 		style_menu(me);
@@ -635,7 +656,7 @@ int abandon(object me)
 	mapping s = state(me);
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
-	tell_object(me, "你放弃了这次远征，局内天赋已经消散。\n");
+	tell_object(me, "你放弃了这次远征，局内天赋已经消散。想重开的话，再选一个流派（yuanzheng）。\n");
 	end_run(me);
 	return 1;
 }
@@ -711,7 +732,8 @@ int settle(object me)
 	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n" +
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
-		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n");
+		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n" +
+		"想再来一局的话，再开一次远征（yuanzheng）。\n");
 	end_run(me);
 	return 1;
 }

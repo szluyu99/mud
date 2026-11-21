@@ -277,6 +277,9 @@ async function zjrogueExtras(page) {
   // 五、终局：匪首
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: boss killed, all five stages clear', await cmd('kill feishou', /五、终局 完成/, 80000), await out());
+  // 打完还没结算时打开菜单：曾经在这里越界报错（Array index out of bounds）
+  await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
+  check('zjrogue: 五关打完后菜单不报错', /五关已经全部通过/.test(await text()) && ! /Array index|未知错误/.test(await text()), (await text()).slice(-200));
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
   await waitText(/获得远征声望 \d+ 点/, 15000);
   {
@@ -290,6 +293,17 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
   check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
   check('zjrogue: 结算时局内兵器收走', /兵器已经还回去了/.test(await out()), await out());
+
+  // 结算完立刻再开一局：上一局的兵器和临时状态不能挡住新的开始
+  await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
+  check('zjrogue: 结算后菜单回到选流派', /先选一个流派/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng start blade'); await page.waitForTimeout(2000);
+  check('zjrogue: 第二局能正常开始', /你以刀客的身份踏上了江湖远征/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
+  check('zjrogue: 第二局从第一关开始', /一、剿匪/.test(await out()), await out());
+  await send(page, 'yuanzheng start fist'); await page.waitForTimeout(1500);
+  check('zjrogue: 打到一半再开一局会给按钮', /你还有一局远征没打完/.test(await text()) && /放弃这一局/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng abandon'); await page.waitForTimeout(1500);
   // 天赋/临时技能都要还原，不然等于白送属性
   const st1 = await stats();
   const key = (x) => [x.a.con, x.a.dex, x.a.int, x.a.str, x.p.combat_exp].join('/');
