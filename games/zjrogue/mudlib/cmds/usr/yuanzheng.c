@@ -51,6 +51,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "buy %d", n) == 1) return YZ_D->buy(me, n);
 	if (sscanf(arg, "debugsp %d", n) == 1) return YZ_D->debug_sp(me, n);
 	if (sscanf(arg, "choose %d", n) == 1) return YZ_D->choose(me, n);
+	if (sscanf(arg, "event %d", n) == 1) return YZ_D->resolve_event(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)
@@ -63,11 +64,12 @@ int main(object me, string arg)
 	case "abandon":	return YZ_D->abandon(me);
 	case "debugwin":	return YZ_D->debug_win(me);
 	case "resume":	return YZ_D->resume(me);
+	case "event":	return notify_fail("请选择 1 或 2：yuanzheng event 1\n");
 	case "where":	return YZ_D->where(me);
 	case "shop":	return YZ_D->shop(me), 1;
 	case "debugsp":	return YZ_D->debug_sp(me, 0);
 	}
-	return notify_fail("用法：yuanzheng（菜单）、start sword|fist|blade、status、choose 1-3、submit、settle、abandon、shop、buy 1-4。\n");
+	return notify_fail("用法：yuanzheng（菜单）、start sword|fist|blade、status、event 1|2、choose 1-3、submit、settle、abandon、shop、buy 1-4。\n");
 }
 
 int help(object me)

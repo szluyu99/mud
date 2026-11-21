@@ -254,6 +254,9 @@ async function zjrogueExtras(page) {
   // 一、剿匪：走到广场打死恶汉
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 60000), await out());
+  check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
+  check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
   check('zjrogue: first talent follows the style', /起手式/.test(await out()));
 
@@ -262,16 +265,19 @@ async function zjrogueExtras(page) {
   check('zjrogue: 守卫 drops a treasure', await cmd('kill shouwei', /摸出.*宝物/, 60000), await out());
   await send(page, 'goto /d/city/kedian'); await page.waitForTimeout(2500);
   check('zjrogue: 宝物 submitted at 宝昌客栈', await cmd('yuanzheng submit', /二、夺宝 完成/, 20000), await out());
+  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 三、寻访：问线人
   await send(page, 'goto /d/city/wumiao'); await page.waitForTimeout(2500);
   check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
+  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 四、截杀副手
   await send(page, 'goto /d/city/beimen'); await page.waitForTimeout(2500);
   check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成/, 60000), await out());
+  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 五、终局：匪首

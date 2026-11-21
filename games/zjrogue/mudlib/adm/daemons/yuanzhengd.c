@@ -391,6 +391,111 @@ void talent_menu(object me)
 	tell_object(me, str + "\n");
 }
 
+// ---------- 局中遭遇 ----------
+// 每过一关（除了最后一关）先撞上一件事，两个选择，都有代价。
+
+mapping *event_pool()
+{
+	return ({
+		([ "title":"黑店", "desc":"路边一间黑店，店家笑得殷勤，灶上的水刚烧开。",
+		   "opts":({ "吃碗热面（回满气血，花 2 点声望）", "掀了他的灶（得 1 点属性点，掉三成气血）" }) ]),
+		([ "title":"受伤的镖师", "desc":"一个镖师靠着树坐着，腿上中了一刀，镖旗倒在一边。",
+		   "opts":({ "帮他包扎（此后出手更狠，攻击 +10）", "摸走他的镖（得 15 点声望）" }) ]),
+		([ "title":"赌坊摊子", "desc":"树下摆着一个赌摊，摊主摇着骰子招呼你。",
+		   "opts":({ "押一把（一半机会得 10 点声望，一半掉两成气血）", "走开（回一点气血）" }) ]),
+	});
+}
+
+void event_menu(object me)
+{
+	mapping s = state(me), ev;
+	mapping *pool;
+	string str;
+	int id, i;
+
+	if (! s) return;
+	if (! mapp(s["event"])) return;
+	id = s["event"]["id"];
+	pool = event_pool();
+	if (id < 0 || id >= sizeof(pool)) { map_delete(s, "event"); return; }
+	ev = pool[id];
+	str = ZJOBLONG "路上遇到：" + ev["title"] + "\n" + ev["desc"] + "\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
+	for (i = 0; i < sizeof(ev["opts"]); i++)
+		str += ev["opts"][i] + ":yuanzheng event " + (i + 1) + ZJSEP;
+	tell_object(me, str + "\n");
+}
+
+int resolve_event(object me, int n)
+{
+	mapping s = state(me);
+	mapping *pool;
+	int id;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (! mapp(s["event"])) return notify_fail("现在没有遇到什么事。\n");
+	if (n < 1 || n > 2) return notify_fail("请选择 1 或 2。\n");
+	id = s["event"]["id"];
+	map_delete(s, "event");
+
+	switch (id)
+	{
+	case 0:	// 黑店
+		if (n == 1)
+		{
+			me->set("qi", me->query("max_qi"));
+			me->set("eff_qi", me->query("max_qi"));
+			me->add("yuanzheng/prestige", -2);
+			tell_object(me, "你埋头吃完，身上暖了起来，顺手付了 2 点声望。\n");
+		}
+		else
+		{
+			s["points"] += 1;
+			me->set("qi", me->query("qi") * 7 / 10 + 1);
+			tell_object(me, "你一脚踹翻灶台，趁乱翻了翻柜台，得了 1 点属性点，也被烫掉了三成气血。\n");
+		}
+		break;
+	case 1:	// 受伤的镖师
+		if (n == 1)
+		{
+			s["buff"]["apply/attack"] = (s["buff"]["apply/attack"] || 0) + 10;
+			me->add_temp("apply/attack", 10);
+			tell_object(me, "你替他扎紧伤口，他教了你两记发力的诀窍：攻击 +10。\n");
+		}
+		else
+		{
+			me->add("yuanzheng/prestige", 15);
+			tell_object(me, "你摸走他的镖，卖了 15 点声望。他盯着你，什么也没说。\n");
+		}
+		break;
+	default:	// 赌坊
+		if (n == 1)
+		{
+			if (random(2))
+			{
+				me->add("yuanzheng/prestige", 10);
+				tell_object(me, "骰子开了，你赢了 10 点声望。\n");
+			}
+			else
+			{
+				me->set("qi", me->query("qi") * 8 / 10 + 1);
+				tell_object(me, "骰子开了，你输了，被人按住搜了一遍，掉了两成气血。\n");
+			}
+		}
+		else
+		{
+			me->set("qi", me->query("qi") + me->query("max_qi") / 10);
+			if (me->query("qi") > me->query("max_qi")) me->set("qi", me->query("max_qi"));
+			tell_object(me, "你摆摆手走开，在路边坐下歇了歇，回了一点气血。\n");
+		}
+		break;
+	}
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	talent_menu(me);
+	begin_stage(me);
+	return 1;
+}
+
 void complete_stage(object me)
 {
 	mapping s = state(me), def = stages[s["stage"]];
@@ -407,8 +512,10 @@ void complete_stage(object me)
 		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。\n" NOR);
 		return;
 	}
-	talent_menu(me);
-	begin_stage(me);
+	s["event"] = ([ "id":random(sizeof(event_pool())) ]);
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	event_menu(me);
 }
 
 // 敌人被杀死
@@ -510,6 +617,15 @@ string status(object me)
 			s["life"], s["max_life"] || MAX_LIFE, s["points"],
 			sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 			me->query("yuanzheng/prestige"));
+	if (mapp(s["event"]))
+	{
+		mapping *pool = event_pool();
+		int id = s["event"]["id"];
+		if (id >= 0 && id < sizeof(pool))
+			return sprintf("路上遇到：%s\n%s\n（yuanzheng event 1 或 2 选一个）\n生命：%d/%d　属性点：%d",
+				pool[id]["title"], pool[id]["desc"],
+				s["life"], s["max_life"] || MAX_LIFE, s["points"]);
+	}
 	def = stages[s["stage"]];
 	return sprintf("%s\n  目标：%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
 		def["title"], def["hint"], s["life"], s["max_life"] || MAX_LIFE, s["points"],
@@ -693,6 +809,12 @@ int resume(object me)
 	if (s["stage"] >= sizeof(stages))
 	{
 		tell_object(me, "五关已经全部通过，可以结算（yuanzheng settle）。\n");
+		return 1;
+	}
+	if (mapp(s["event"]))
+	{
+		tell_object(me, "接着打这一局。\n");
+		event_menu(me);
 		return 1;
 	}
 	tell_object(me, "接着打这一局。\n");
