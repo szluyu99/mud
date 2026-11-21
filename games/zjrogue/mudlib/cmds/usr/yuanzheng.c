@@ -27,6 +27,7 @@ int menu(object me)
 	{
 		str += "继续远征:yuanzheng resume" ZJSEP;
 		str += "看当前目标:yuanzheng status" ZJSEP;
+		str += "局内摊位（" + (s["coin"] || 0) + " 钱）:yuanzheng stall" ZJSEP;
 		if (s["points"] > 0)
 			str += "选天赋:yuanzheng talents" ZJSEP;
 		if (s["stage"] < 5)
@@ -53,6 +54,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "debugsp %d", n) == 1) return YZ_D->debug_sp(me, n);
 	if (sscanf(arg, "choose %d", n) == 1) return YZ_D->choose(me, n);
 	if (sscanf(arg, "event %d", n) == 1) return YZ_D->resolve_event(me, n);
+	if (sscanf(arg, "stall %d", n) == 1) return YZ_D->buy_stall(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)
@@ -66,6 +68,7 @@ int main(object me, string arg)
 	case "debugwin":	return YZ_D->debug_win(me);
 	case "resume":	return YZ_D->resume(me);
 	case "event":	return notify_fail("请选择 1 或 2：yuanzheng event 1\n");
+	case "stall":	return YZ_D->stall(me);
 	case "where":	return YZ_D->where(me);
 	case "shop":	return YZ_D->shop(me), 1;
 	case "debugsp":	return YZ_D->debug_sp(me, 0);

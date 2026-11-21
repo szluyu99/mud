@@ -550,6 +550,7 @@ int resolve_event(object me, int n)
 void complete_stage(object me)
 {
 	mapping s = state(me), def = stages[s["stage"]];
+	int earned;
 
 	clean_world(me, s["stage"]);
 	s["stage"] += 1;
@@ -557,7 +558,11 @@ void complete_stage(object me)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 
-	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 1 点属性点。\n" NOR);
+	earned = 6 + (s["stage"] - 1) * 4;
+	s["coin"] = (s["coin"] || 0) + earned;
+	roll_stall(me, s);
+	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 1 点属性点，捡到 " +
+		earned + " 枚铜钱。\n" NOR);
 	if (s["stage"] >= sizeof(stages))
 	{
 		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。\n" NOR);
@@ -631,6 +636,18 @@ int on_die(object me)
 	mapping s = state(me);
 
 	if (! s) return 0;
+	if (s["charm"] > 0)
+	{
+		s["charm"] -= 1;
+		me->revive(1);
+		me->set("qi", me->query("max_qi"));
+		me->set("eff_qi", me->query("max_qi"));
+		me->set_temp("yuanzheng", s);
+		save_run(me);
+		me->set_override("die", (: call_other, __FILE__, "on_die" :));
+		tell_object(me, HIY "免死符烧成一道黄光，替你挡下了这一下。\n" NOR);
+		return 1;
+	}
 	s["life"] -= 1;
 	s["deaths"] = (s["deaths"] || 0) + 1;
 	if (s["life"] <= 0)
@@ -673,16 +690,116 @@ string status(object me)
 		mapping *pool = event_pool();
 		int id = s["event"]["id"];
 		if (id >= 0 && id < sizeof(pool))
-			return sprintf("路上遇到：%s\n%s\n（yuanzheng event 1 或 2 选一个）\n生命：%d/%d　属性点：%d",
+			return sprintf("路上遇到：%s\n%s\n（yuanzheng event 1 或 2 选一个）\n生命：%d/%d　属性点：%d　铜钱：%d",
 				pool[id]["title"], pool[id]["desc"],
-				s["life"], s["max_life"] || MAX_LIFE, s["points"]);
+				s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0);
 	}
 	def = stages[s["stage"]];
-	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
+	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d　铜钱：%d\n天赋：%s\n远征声望：%d",
 		def["title"], def["hint"], city_of(me)["name"], room_name(stage_room(me, def)),
-		s["life"], s["max_life"] || MAX_LIFE, s["points"],
+		s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0,
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 		me->query("yuanzheng/prestige"));
+}
+
+// 局内摊位：铜钱在关卡里赚，只能在本局花，结算后清零
+mapping *stall_pool()
+{
+	return ({
+		([ "id":"hp",    "name":"金创药",   "desc":"气血回满",       "cost":15 ]),
+		([ "id":"armor", "name":"铁布衫符", "desc":"本局护甲 +10",   "cost":20 ]),
+		([ "id":"dmg",   "name":"快刀符",   "desc":"本局伤害 +15",   "cost":20 ]),
+		([ "id":"charm", "name":"免死符",   "desc":"下一次倒下不扣命", "cost":30 ]),
+		([ "id":"point", "name":"偷天换日", "desc":"多 1 点天赋点",  "cost":35 ])
+	});
+}
+
+void roll_stall(object me, mapping s)
+{
+	mapping *pool = stall_pool();
+	int *idx = allocate(sizeof(pool));
+	int i, j, t;
+
+	for (i = 0; i < sizeof(idx); i++) idx[i] = i;
+	for (i = sizeof(idx) - 1; i > 0; i--)
+	{
+		j = random(i + 1);
+		t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+	}
+	s["stall"] = ({});
+	for (i = 0; i < 3 && i < sizeof(idx); i++)
+		s["stall"] += ({ pool[idx[i]]["id"] });
+}
+
+mapping stall_item(string id)
+{
+	foreach (mapping it in stall_pool())
+		if (it["id"] == id) return it;
+	return 0;
+}
+
+int stall(object me)
+{
+	mapping s = state(me), it;
+	string str;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	str = ZJOBLONG "路边的摊子\n铜钱：" + s["coin"] + "　（过一关会换一批货）\n"
+		ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
+	if (! arrayp(s["stall"]) || ! sizeof(s["stall"]))
+		str += "不买了:look" ZJSEP;
+	else
+	{
+		int i = 0;
+		foreach (string id in s["stall"])
+		{
+			i++;
+			it = stall_item(id);
+			if (mapp(it))
+				str += it["name"] + "（" + it["cost"] + " 钱）:yuanzheng stall " + i + ZJSEP;
+		}
+	}
+	write(str + "\n");
+	return 1;
+}
+
+int buy_stall(object me, int n)
+{
+	mapping s = state(me), it;
+	string id;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (! arrayp(s["stall"]) || n < 1 || n > sizeof(s["stall"]))
+		return notify_fail("摊子上没有这一件。\n");
+	id = s["stall"][n - 1];
+	if (! mapp(it = stall_item(id))) return notify_fail("摊子上没有这一件。\n");
+	if (s["coin"] < it["cost"])
+		return notify_fail("铜钱不够（要 " + it["cost"] + " 钱）。\n");
+	s["coin"] -= it["cost"];
+	s["stall"] -= ({ id });
+	if (id == "hp")
+	{
+		me->set("qi", me->query("max_qi"));
+		me->set("eff_qi", me->query("max_qi"));
+	}
+	else if (id == "armor")
+	{
+		s["buff"]["apply/armor"] = (s["buff"]["apply/armor"] || 0) + 10;
+		me->add_temp("apply/armor", 10);
+	}
+	else if (id == "dmg")
+	{
+		s["buff"]["apply/damage"] = (s["buff"]["apply/damage"] || 0) + 15;
+		me->add_temp("apply/damage", 15);
+	}
+	else if (id == "charm")
+		s["charm"] = (s["charm"] || 0) + 1;
+	else if (id == "point")
+		s["points"] += 1;
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, "你买下了" + it["name"] + "：" + it["desc"] + "。\n");
+	return 1;
 }
 
 // 局外成长面板：累计声望、通关次数、最好成绩、已买特权
@@ -777,7 +894,9 @@ int start(object me, string style, string city)
 	s = ([ "stage":0, "life":MAX_LIFE + (has_perk(me, "life") ? 1 : 0),
 	       "points":has_perk(me, "point") ? 1 : 0, "talents":({}),
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
-	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]) ]);
+	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
+	       "coin":0, "charm":0, "stall":({}) ]);
+	roll_stall(me, s);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
 	s["buff"]["apply/damage"] = 30;

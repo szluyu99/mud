@@ -260,6 +260,8 @@ async function zjrogueExtras(page) {
   check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
   check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng stall'); await page.waitForTimeout(1200);
+  check('zjrogue: 局内摊位摆出三件货', /路边的摊子/.test(await text()) && /钱）/.test(await text()) && /铜钱：\d+/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
   check('zjrogue: first talent follows the style', /起手式/.test(await out()));
 
