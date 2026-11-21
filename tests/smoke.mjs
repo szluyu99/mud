@@ -258,7 +258,8 @@ async function zjrogueExtras(page) {
 
   // 一、剿匪：走到广场打死恶汉
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
-  check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 60000), await out());
+  // 连招提示要等第二拳才有，一刀秒掉就看不到；所以这里单独等一会再判过关
+  check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 90000), await out());
   check('zjrogue: 剑客连招会叠伤害', /剑势连绵/.test(await text()), (await text()).slice(-200));
   check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);

@@ -133,9 +133,11 @@ int style_damage(string type, int damage, object who)
 	if (style == "sword")
 	{
 		if (hits >= 2)
+		{
 			damage += damage * (hits > 4 ? 3 : hits - 1) / 10;
-		if (hits == 3)
-			message_vision(HIC "$N剑势连绵，一记快似一记！\n" NOR, who);
+			if (hits == 3)
+				message_vision(HIC "$N剑势连绵，一记快似一记！\n" NOR, who);
+		}
 	}
 	else if (style == "fist")
 	{
