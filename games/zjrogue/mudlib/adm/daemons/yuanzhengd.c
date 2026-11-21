@@ -7,6 +7,9 @@
 #define YZ_ENEMY "/kungfu/class/yuanzheng/enemy"
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
 #define YZ_TREASURE "/clone/misc/yz_treasure"
+#define YZ_SPOIL_SWORD "/clone/misc/yz_spoil_sword"
+#define YZ_SPOIL_BLADE "/clone/misc/yz_spoil_blade"
+#define YZ_SPOIL_ARMOR "/clone/misc/yz_spoil_armor"
 
 mapping *stages = ({
 	([ "type":"kill", "title":"一、剿匪", "key":"kill", "who":"恶汉", "eid":"ehan",
@@ -109,16 +112,39 @@ mapping talents = ([
 
 
 // ---- 局外成长：用远征声望买的常驻特权，每局开局生效 ----
+// 局外特权分三条线，每条都得先买过上一级
 mapping *perks = ({
-	([ "id":"point", "name":"老练", "desc":"每局开局多 1 点属性点", "cost":30 ]),
-	([ "id":"life",	 "name":"命硬", "desc":"每局多 1 条命", "cost":60 ]),
-	([ "id":"atk",	 "name":"磨砺", "desc":"每局开局再加 10 点攻击", "cost":40 ]),
-	([ "id":"gain",	 "name":"名望", "desc":"结算得到的声望 +20%", "cost":80 ])
+	([ "id":"point", "name":"老练", "desc":"每局开局多 1 点属性点", "cost":30, "tier":1 ]),
+	([ "id":"life",	 "name":"命硬", "desc":"每局多 1 条命", "cost":60, "tier":1 ]),
+	([ "id":"atk",	 "name":"磨砺", "desc":"每局开局再加 10 点攻击", "cost":40, "tier":1 ]),
+	([ "id":"gain",	 "name":"名望", "desc":"结算得到的声望 +20%", "cost":80, "tier":1 ]),
+	([ "id":"talent", "name":"师承", "desc":"开局多 1 点天赋点", "cost":90, "tier":2, "need":"point" ]),
+	([ "id":"coin",	 "name":"眼力", "desc":"每关多捡 4 枚铜钱", "cost":70, "tier":2, "need":"atk" ]),
+	([ "id":"spoil", "name":"旧藏", "desc":"开局带一件上次的战利品", "cost":110, "tier":2, "need":"life" ]),
+	([ "id":"scout", "name":"耳目", "desc":"开局就知道这一局五关要打谁", "cost":50, "tier":2, "need":"gain" ]),
+	([ "id":"spoil2", "name":"行囊", "desc":"开局带两件战利品（先买旧藏）", "cost":160, "tier":3, "need":"spoil" ]),
+	([ "id":"life2", "name":"铁骨", "desc":"每局再多 1 条命（先买命硬）", "cost":140, "tier":3, "need":"life" ])
 });
 
 int has_perk(object me, string id)
 {
 	return me->query("yuanzheng/perk/" + id) ? 1 : 0;
+}
+
+int perks_of(object me, string id)
+{
+	int n = has_perk(me, id) ? 1 : 0;
+
+	if (id == "life") n += has_perk(me, "life2") ? 1 : 0;
+	if (id == "spoil") n += has_perk(me, "spoil2") ? 1 : 0;
+	return n;
+}
+
+string perk_name(string id)
+{
+	foreach (mapping p in perks)
+		if (p["id"] == id) return p["name"];
+	return id;
 }
 
 void shop(object me)
@@ -132,6 +158,11 @@ void shop(object me)
 	for (i = 0; i < sizeof(perks); i++)
 	{
 		owned = has_perk(me, perks[i]["id"]);
+		if (! owned && stringp(perks[i]["need"]) && ! has_perk(me, perks[i]["need"]))
+		{
+			str += perks[i]["name"] + "（先买「" + perk_name(perks[i]["need"]) + "」）:yuanzheng shop" ZJSEP;
+			continue;
+		}
 		str += perks[i]["name"] + "（" + perks[i]["desc"] + "，" +
 			(owned ? "已拥有" : perks[i]["cost"] + " 声望") + "）:" +
 			(owned ? "yuanzheng shop" : "yuanzheng buy " + (i + 1)) + ZJSEP;
@@ -147,6 +178,8 @@ int buy(object me, int n)
 	if (n < 1 || n > sizeof(perks)) return notify_fail("没有这件特权。\n");
 	p = perks[n - 1];
 	if (has_perk(me, p["id"])) return notify_fail("你已经拥有了「" + p["name"] + "」。\n");
+	if (stringp(p["need"]) && ! has_perk(me, p["need"]))
+		return notify_fail("得先有「" + perk_name(p["need"]) + "」才能买这个。\n");
 	cost = p["cost"];
 	if (me->query("yuanzheng/prestige") < cost)
 		return notify_fail("声望不够：需要 " + cost + "，你只有 " + me->query("yuanzheng/prestige") + "。\n");
@@ -558,7 +591,7 @@ void complete_stage(object me)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 
-	earned = 6 + (s["stage"] - 1) * 4;
+	earned = 6 + (s["stage"] - 1) * 4 + (has_perk(me, "coin") ? 4 : 0);
 	s["coin"] = (s["coin"] || 0) + earned;
 	roll_stall(me, s);
 	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 1 点属性点，捡到 " +
@@ -891,8 +924,8 @@ int start(object me, string style, string city)
 	st = styles[style];
 	if (! mapp(st)) return notify_fail("请选择流派：剑客（sword）、拳师（fist）、刀客（blade）。\n");
 
-	s = ([ "stage":0, "life":MAX_LIFE + (has_perk(me, "life") ? 1 : 0),
-	       "points":has_perk(me, "point") ? 1 : 0, "talents":({}),
+	s = ([ "stage":0, "life":MAX_LIFE + perks_of(me, "life"),
+	       "points":(has_perk(me, "point") ? 1 : 0) + (has_perk(me, "talent") ? 1 : 0), "talents":({}),
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
 	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
 	       "coin":0, "charm":0, "stall":({}) ]);
@@ -930,10 +963,19 @@ int start(object me, string style, string city)
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
 	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
+	if (has_perk(me, "spoil")) give_start_spoil(me, perks_of(me, "spoil"));
 	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
 		st["desc"] + "\n" +
 		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n" +
 		"这一趟去" + city_of(me)["name"] + "。\n");
+	if (has_perk(me, "scout"))
+	{
+		string plan = "";
+		int k;
+		for (k = 0; k < sizeof(stages); k++)
+			plan += (k ? "，" : "") + stages[k]["title"] + "：" + stages[k]["who"];
+		tell_object(me, "（耳目打听到这一局五关要打的人：" + plan + "）\n");
+	}
 	begin_stage(me);
 	return 1;
 }
@@ -971,6 +1013,31 @@ int abandon(object me)
 }
 
 // 五关全过带一件东西回去，是这一局唯一能带出局的东西
+// 旧藏/行囊：开局按上次的流派带出上一件的战利品
+void give_start_spoil(object me, int n)
+{
+	string style = me->query("yuanzheng/last_style");
+	string file;
+
+	if (! stringp(style) || ! sizeof(style)) style = "sword";
+	switch (style)
+	{
+	case "blade":	file = YZ_SPOIL_BLADE; break;
+	case "fist":	file = YZ_SPOIL_ARMOR; break;
+	default:	file = YZ_SPOIL_SWORD; break;
+	}
+	while (n-- > 0)
+	{
+		object ob = new(file);
+		if (! objectp(ob)) continue;
+		ob->set("yz_spoil", 1);
+		ob->move(me, 1);
+		if (ob->query("armor_prop/armor")) ob->wear();
+		else ob->wield();
+	}
+	tell_object(me, "（行囊里还带着战利品，先穿上再说）\n");
+}
+
 void give_spoil(object me, string style)
 {
 	string file;
@@ -978,9 +1045,9 @@ void give_spoil(object me, string style)
 
 	switch (style)
 	{
-	case "sword":	file = "/clone/misc/yz_spoil_sword"; break;
-	case "blade":	file = "/clone/misc/yz_spoil_blade"; break;
-	default:	file = "/clone/misc/yz_spoil_armor"; break;
+	case "sword":	file = YZ_SPOIL_SWORD; break;
+	case "blade":	file = YZ_SPOIL_BLADE; break;
+	default:	file = YZ_SPOIL_ARMOR; break;
 	}
 	ob = new(file);
 	if (! ob) return;
@@ -1043,6 +1110,7 @@ int settle(object me)
 	gain = 8 + sizeof(s["talents"]) * 2 + (s["life"] - 1) * 3;
 	if (has_perk(me, "gain")) gain += gain * 20 / 100;
 	give_spoil(me, s["style"]);
+	me->set("yuanzheng/last_style", s["style"]);
 	me->add("yuanzheng/prestige", gain);
 	me->add("yuanzheng/earned", gain);
 	me->add("yuanzheng/runs", 1);

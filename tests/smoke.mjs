@@ -244,6 +244,9 @@ async function zjrogueExtras(page) {
   check('zjrogue: 买下命硬', /换到了「命硬」/.test(await out()), await out());
   await send(page, 'yuanzheng buy 4'); await page.waitForTimeout(1200);
   check('zjrogue: 买下名望', /换到了「名望」/.test(await out()), await out());
+  // 局外特权现在是三条线：还没买「磨砺」时，「眼力」只显示前置条件，没有购买入口
+  await send(page, 'yuanzheng shop'); await page.waitForTimeout(1200);
+  check('zjrogue: 二三级特权要先买前一级', /眼力（先买「磨砺」）/.test(await text()) && ! /buy 6/.test(await text()), (await text()).slice(-260));
   await send(page, 'yuanzheng start sword city'); await page.waitForTimeout(1500);
   await send(page, 'yuanzheng resume'); await page.waitForTimeout(1500);
   check('zjrogue: 中途可以接着打这一局', /接着打这一局/.test(await text()), (await text()).slice(-120));
