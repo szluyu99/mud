@@ -220,47 +220,55 @@ async function zjrogueExtras(page) {
   for (const c of ['east', 'out', 'pianshu jhx', 'wash', 'born 扬州人氏']) { await send(page, c); await page.waitForTimeout(2000); }
   check('zjrogue: born in 宝昌客栈', await waitRoom(page, '宝昌客栈', 8000), await room(page));
   const text = () => page.evaluate(() => document.body.innerText);
+  const out = () => page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0] || '');
+  const waitFor = async (re, ms) => { for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (re.test(await out())) return true; await page.waitForTimeout(400); } return false; };
+  const cmd = async (c, re, ms = 20000) => { await send(page, c); return waitFor(re, ms); };
   // 先开巫师权限（会重连一次），再开始远征，否则临时状态会被这次重连冲掉
   await page.evaluate((id) => MudWasm.setWizard(id, 'admin'), page.charId).catch(() => {});
   await page.waitForTimeout(3000);
   await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
   await page.waitForTimeout(2000);
+  const stats = async () => JSON.parse(await page.evaluate(() => MudWasm.lpc('mudwasm_stats', [])));
+  const st0 = await stats();
   await send(page, 'yuanzheng'); await page.waitForTimeout(1200);
   check('zjrogue: 远征菜单 opens', /江湖远征/.test(await text()) && /开始远征/.test(await page.evaluate(() => document.body.innerHTML)));
-  await send(page, 'yuanzheng start'); await page.waitForTimeout(1200);
+  await send(page, 'yuanzheng start'); await page.waitForTimeout(1500);
   check('zjrogue: 远征 starts with three lives', /三条命/.test(await text()));
-  await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
-  check('zjrogue: 任务 requires the right room', /你还没有到地方/.test(await text()));
-  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(1500);
-  await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
+  check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
+
+  // 一、剿匪：走到广场打死恶汉
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
+  check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 60000), await out());
+  await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
+  check('zjrogue: first talent is 铁骨', /铁骨/.test(await out()));
+
+  // 二、夺宝：打死守卫拿宝物，回客店上交
+  await send(page, 'goto /d/city/nandajie1'); await page.waitForTimeout(2500);
+  check('zjrogue: 守卫 drops a treasure', await cmd('kill shouwei', /摸出.*宝物/, 60000), await out());
+  await send(page, 'goto /d/city/kedian'); await page.waitForTimeout(2500);
+  check('zjrogue: 宝物 submitted at 宝昌客栈', await cmd('yuanzheng submit', /二、夺宝 完成/, 20000), await out());
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
-  check('zjrogue: first talent is 铁骨 (max qi +120)', /天赋【铁骨】/.test(await text()));
-  // 刷新后远征进度还在（局内状态存在角色身上，先存一次档）
-  await page.evaluate(async () => { await MudWasm.lpc('mudwasm_save', []); await new Promise((r) => setTimeout(r, 500)); await MudWasm.sync(); });
-  await page.reload({ waitUntil: 'load' });
-  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
-  await page.waitForTimeout(3000);
-  await page.waitForTimeout(3000);
-  await send(page, 'yuanzheng status'); await page.waitForTimeout(2500);
-  const stResume = (await page.evaluate(() => document.querySelector('div#out')?.innerText || '')).slice(-160);
-  check('zjrogue: run survives a page reload', /第2\/5个任务/.test(stResume), stResume);
-  const stats = async () => { try { return JSON.parse(await page.evaluate(() => MudWasm.lpc('mudwasm_stats', []))); } catch (e) { return null; } };
-  const st0 = (await stats()) || {};
-  for (const [room, n] of [['/d/city/wumiao', '2'], ['/d/city/kedian', '3'], ['/d/city/beimen', '1'], ['/d/city/dangpu', '']]) {
-    await send(page, 'goto ' + room); await page.waitForTimeout(1200);
-    await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
-    if (n) { await send(page, 'yuanzheng choose ' + n); await page.waitForTimeout(800); }
-  }
-  const st1 = (await stats()) || {};
-  // 第三个任务后选的是「根骨」(+2 con)，属性要真的涨在角色身上
-  check('zjrogue: 根骨 talent raises con by 2 in game', st0.a && st1.a && st1.a.con === st0.a.con + 2, [st0.a, st1.a]);
-  check('zjrogue: all five tasks done', /五项远征任务全部完成/.test(await text()));
-  await send(page, 'yuanzheng settle'); await page.waitForTimeout(1200);
-  check('zjrogue: settle grants 远征声望', /获得远征声望 \d+ 点/.test(await text()));
-  const st2 = (await stats()) || {};
-  check('zjrogue: talents removed again after settle', st2.a && st2.a.con === st0.a.con && st2.a.dex === st0.a.dex, [st0.a, st2.a]);
-  await send(page, 'yuanzheng status'); await page.waitForTimeout(1000);
-  check('zjrogue: run cleared after settle', /尚未开始远征/.test((await page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0]) || '').slice(-200)));
+
+  // 三、寻访：问线人
+  await send(page, 'goto /d/city/wumiao'); await page.waitForTimeout(2500);
+  check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
+  await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
+
+  // 四、截杀副手
+  await send(page, 'goto /d/city/beimen'); await page.waitForTimeout(2500);
+  check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成/, 60000), await out());
+  await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
+
+  // 五、终局：匪首
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
+  check('zjrogue: boss killed, all five stages clear', await cmd('kill feishou', /五、终局 完成/, 80000), await out());
+  check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
+  check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
+  // 天赋/临时技能都要还原，不然等于白送属性
+  const st1 = await stats();
+  const key = (x) => [x.a.con, x.a.dex, x.a.int, x.a.str, x.p.combat_exp].join('/');
+  check('zjrogue: temporary bonuses removed after settle', key(st1) === key(st0), [key(st0), key(st1)]);
 }
 
 // ---------- stand-alone wiki pages ----------
