@@ -14,7 +14,8 @@ int menu(object me)
         "选择天赋一:yuanzheng choose 1" ZJSEP
         "选择天赋二:yuanzheng choose 2" ZJSEP
         "选择天赋三:yuanzheng choose 3" ZJSEP
-        "结算远征:yuanzheng settle\n");
+        "结算远征:yuanzheng settle" ZJSEP
+        "放弃远征:yuanzheng abandon\n");
     return 1;
 }
 
@@ -30,7 +31,8 @@ int main(object me, string arg)
     if (arg == "status") { write(YZ_D->status(me) + "\n"); return 1; }
     if (arg == "complete") return YZ_D->complete(me);
     if (arg == "settle") return YZ_D->settle(me);
-    return notify_fail("用法：yuanzheng（打开菜单），或 yuanzheng start/status/complete/choose 1/settle。\n");
+    if (arg == "abandon") return YZ_D->abandon(me);
+    return notify_fail("用法：yuanzheng（打开菜单），或 yuanzheng start/status/complete/choose 1/settle/abandon。\n");
 }
 
 int help(object me)

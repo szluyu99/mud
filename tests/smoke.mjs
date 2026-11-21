@@ -100,6 +100,7 @@ for (const g of GAMES) {
       await page.evaluate(() => MudWasm.sync());
       const ids = await page.evaluate(() => new Promise((r) => { const q = indexedDB.open('mudwasm', 1); q.onsuccess = () => { const t = q.result.transaction(q.result.objectStoreNames[0]).objectStore(q.result.objectStoreNames[0]).getAllKeys(); t.onsuccess = () => r(t.result); }; q.onerror = () => r([]); }));
       check('zjrogue: saved under its own key', ids.includes('zjrogue') && !ids.includes('zjmud'), ids);
+      await zjrogueExtras(page);
     }
   } catch (e) { check(g + ': run', false, String(e).slice(0, 200)); }
   check(g + ': no page errors', !errs.length, errs);
@@ -212,6 +213,54 @@ async function zjmudExtras(page, ctx) {
   const tail = (await outTxt()).slice(-600);
   check('zjmud: items kept after reload (长剑 布衣 酒袋 帐篷, not 师门信件)', /长剑/.test(inv) && /布衣/.test(inv) && /酒袋/.test(inv) && /帐篷/.test(inv) && !/师门信件/.test(inv), inv.slice(0, 200));
   check('zjmud: 长剑 still wielded, 包子 still in 帐篷', wielded && /从帐篷中拿出/.test(tail), tail.slice(-160));
+}
+
+// ---------- zjrogue only: 江湖远征 P1 ----------
+async function zjrogueExtras(page) {
+  for (const c of ['east', 'out', 'pianshu jhx', 'wash', 'born 扬州人氏']) { await send(page, c); await page.waitForTimeout(2000); }
+  check('zjrogue: born in 宝昌客栈', await waitRoom(page, '宝昌客栈', 8000), await room(page));
+  const text = () => page.evaluate(() => document.body.innerText);
+  // 先开巫师权限（会重连一次），再开始远征，否则临时状态会被这次重连冲掉
+  await page.evaluate((id) => MudWasm.setWizard(id, 'admin'), page.charId).catch(() => {});
+  await page.waitForTimeout(3000);
+  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
+  await page.waitForTimeout(2000);
+  await send(page, 'yuanzheng'); await page.waitForTimeout(1200);
+  check('zjrogue: 远征菜单 opens', /江湖远征/.test(await text()) && /开始远征/.test(await page.evaluate(() => document.body.innerHTML)));
+  await send(page, 'yuanzheng start'); await page.waitForTimeout(1200);
+  check('zjrogue: 远征 starts with three lives', /三条命/.test(await text()));
+  await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
+  check('zjrogue: 任务 requires the right room', /你还没有到地方/.test(await text()));
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(1500);
+  await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
+  await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
+  check('zjrogue: first talent is 铁骨 (max qi +120)', /天赋【铁骨】/.test(await text()));
+  // 刷新后远征进度还在（局内状态存在角色身上，先存一次档）
+  await page.evaluate(async () => { await MudWasm.lpc('mudwasm_save', []); await new Promise((r) => setTimeout(r, 500)); await MudWasm.sync(); });
+  await page.reload({ waitUntil: 'load' });
+  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
+  await page.waitForTimeout(3000);
+  await page.waitForTimeout(3000);
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(2500);
+  const stResume = (await page.evaluate(() => document.querySelector('div#out')?.innerText || '')).slice(-160);
+  check('zjrogue: run survives a page reload', /第2\/5个任务/.test(stResume), stResume);
+  const stats = async () => { try { return JSON.parse(await page.evaluate(() => MudWasm.lpc('mudwasm_stats', []))); } catch (e) { return null; } };
+  const st0 = (await stats()) || {};
+  for (const [room, n] of [['/d/city/wumiao', '2'], ['/d/city/kedian', '3'], ['/d/city/beimen', '1'], ['/d/city/dangpu', '']]) {
+    await send(page, 'goto ' + room); await page.waitForTimeout(1200);
+    await send(page, 'yuanzheng complete'); await page.waitForTimeout(1000);
+    if (n) { await send(page, 'yuanzheng choose ' + n); await page.waitForTimeout(800); }
+  }
+  const st1 = (await stats()) || {};
+  // 第三个任务后选的是「根骨」(+2 con)，属性要真的涨在角色身上
+  check('zjrogue: 根骨 talent raises con by 2 in game', st0.a && st1.a && st1.a.con === st0.a.con + 2, [st0.a, st1.a]);
+  check('zjrogue: all five tasks done', /五项远征任务全部完成/.test(await text()));
+  await send(page, 'yuanzheng settle'); await page.waitForTimeout(1200);
+  check('zjrogue: settle grants 远征声望', /获得远征声望 \d+ 点/.test(await text()));
+  const st2 = (await stats()) || {};
+  check('zjrogue: talents removed again after settle', st2.a && st2.a.con === st0.a.con && st2.a.dex === st0.a.dex, [st0.a, st2.a]);
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1000);
+  check('zjrogue: run cleared after settle', /尚未开始远征/.test((await page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0]) || '').slice(-200)));
 }
 
 // ---------- stand-alone wiki pages ----------
