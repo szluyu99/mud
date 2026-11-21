@@ -161,6 +161,7 @@ int debug_sp(object me, int n)
 	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
 	if (n < 1) n = 10;
 	me->add("yuanzheng/prestige", n);
+	me->add("yuanzheng/earned", n);
 	tell_object(me, "（调试）声望 +" + n + "，现在是 " + me->query("yuanzheng/prestige") + "。\n");
 	return 1;
 }
@@ -684,6 +685,26 @@ string status(object me)
 		me->query("yuanzheng/prestige"));
 }
 
+// 局外成长面板：累计声望、通关次数、最好成绩、已买特权
+string overview(object me)
+{
+	string *got = ({});
+	string str;
+	int i;
+
+	foreach (mapping p in perks)
+		if (has_perk(me, p["id"])) got += ({ p["name"] });
+	str = sprintf("远征声望：%d（累计 %d）", me->query("yuanzheng/prestige"),
+		me->query("yuanzheng/earned"));
+	str += "\n已通关：" + (me->query("yuanzheng/runs") || 0) + " 局";
+	if (me->query("yuanzheng/best_time"))
+		str += "　最快：" + fmt_time(me->query("yuanzheng/best_time"));
+	if (me->query("yuanzheng/best_gain"))
+		str += "　单局最高：" + me->query("yuanzheng/best_gain") + " 点";
+	str += "\n已买特权：" + (sizeof(got) ? implode(got, "、") : "还没有（yuanzheng shop）");
+	return str;
+}
+
 int has_weapon(object me)
 {
 	object ob;
@@ -896,7 +917,7 @@ string tally(string *names)
 int settle(object me)
 {
 	mapping s = state(me);
-	int gain;
+	int gain, used;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (s["stage"] < sizeof(stages)) return notify_fail("还有关卡没有通过，不能结算。\n");
@@ -904,6 +925,12 @@ int settle(object me)
 	if (has_perk(me, "gain")) gain += gain * 20 / 100;
 	give_spoil(me, s["style"]);
 	me->add("yuanzheng/prestige", gain);
+	me->add("yuanzheng/earned", gain);
+	me->add("yuanzheng/runs", 1);
+	if (gain > me->query("yuanzheng/best_gain")) me->set("yuanzheng/best_gain", gain);
+	used = time() - s["started"];
+	if (! me->query("yuanzheng/best_time") || used < me->query("yuanzheng/best_time"))
+		me->set("yuanzheng/best_time", used);
 	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n" +
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +

@@ -306,6 +306,7 @@ async function zjrogueExtras(page) {
   // 结算完立刻再开一局：上一局的兵器和临时状态不能挡住新的开始
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
   check('zjrogue: 结算后菜单回到选流派', /先选一个流派/.test(await text()), (await text()).slice(-160));
+  check('zjrogue: 面板记下通关与最好成绩', /已通关：1 局/.test(await text()) && /单局最高：\d+ 点/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng start blade'); await page.waitForTimeout(2000);
   check('zjrogue: 第二局能正常开始', /你以刀客的身份踏上了江湖远征/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);

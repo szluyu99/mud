@@ -10,7 +10,7 @@ int menu(object me)
 
 	YZ_D->ensure_world(me);
 	s = YZ_D->state(me);
-	str = ZJOBLONG "江湖远征\n" + YZ_D->status(me) + "\n";
+	str = ZJOBLONG "江湖远征\n" + YZ_D->status(me) + "\n" + YZ_D->overview(me) + "\n";
 	if (! s)
 		str += "先选一个流派：剑客走剑法连招，拳师空手贴身短打，刀客血厚刚猛。\n"
 		     + "五关：剿匪、夺宝、寻访、截杀、终局。三条命，通关后结算远征声望。\n";
