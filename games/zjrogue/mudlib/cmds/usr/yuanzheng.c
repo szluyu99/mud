@@ -9,9 +9,8 @@ int menu(object me)
 	string str;
 
 	YZ_D->ensure_world(me);
-	s = me->query_temp("yuanzheng");
+	s = YZ_D->state(me);
 	str = ZJOBLONG "江湖远征\n" + YZ_D->status(me) + "\n";
-	str += "远征声望：" + me->query("yuanzheng/prestige") + "\n";
 	if (! s)
 		str += "先选一个流派：剑客走剑法连招，拳师空手贴身短打，刀客血厚刚猛。\n"
 		     + "五关：剿匪、夺宝、寻访、截杀、终局。三条命，通关后结算远征声望。\n";
@@ -26,6 +25,7 @@ int menu(object me)
 	}
 	else
 	{
+		str += "继续远征:yuanzheng resume" ZJSEP;
 		str += "看当前目标:yuanzheng status" ZJSEP;
 		if (s["points"] > 0)
 			str += "选天赋:yuanzheng talents" ZJSEP;
@@ -62,6 +62,7 @@ int main(object me, string arg)
 	case "settle":	return YZ_D->settle(me);
 	case "abandon":	return YZ_D->abandon(me);
 	case "debugwin":	return YZ_D->debug_win(me);
+	case "resume":	return YZ_D->resume(me);
 	case "where":	return YZ_D->where(me);
 	case "shop":	return YZ_D->shop(me), 1;
 	case "debugsp":	return YZ_D->debug_sp(me, 0);

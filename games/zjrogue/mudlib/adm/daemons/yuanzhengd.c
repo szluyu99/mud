@@ -639,6 +639,45 @@ int abandon(object me)
 	return 1;
 }
 
+// 五关全过带一件东西回去，是这一局唯一能带出局的东西
+void give_spoil(object me, string style)
+{
+	string file;
+	object ob;
+
+	switch (style)
+	{
+	case "sword":	file = "/clone/misc/yz_spoil_sword"; break;
+	case "blade":	file = "/clone/misc/yz_spoil_blade"; break;
+	default:	file = "/clone/misc/yz_spoil_armor"; break;
+	}
+	ob = new(file);
+	if (! ob) return;
+	if (! ob->move(me))
+	{
+		ob->move(environment(me));
+		tell_object(me, "你身上放不下战利品，它掉在地上了。\n");
+		return;
+	}
+	tell_object(me, "你从这一局里带出了一件" + ob->query("name") + "。\n");
+}
+
+// 中途下线再上来：临时状态已经没了，按存档把这一局接回来
+int resume(object me)
+{
+	mapping s = state(me);
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (s["stage"] >= sizeof(stages))
+	{
+		tell_object(me, "五关已经全部通过，可以结算（yuanzheng settle）。\n");
+		return 1;
+	}
+	tell_object(me, "接着打这一局。\n");
+	begin_stage(me);
+	return 1;
+}
+
 int settle(object me)
 {
 	mapping s = state(me);
@@ -648,6 +687,7 @@ int settle(object me)
 	if (s["stage"] < sizeof(stages)) return notify_fail("还有关卡没有通过，不能结算。\n");
 	gain = 8 + sizeof(s["talents"]) * 2 + (s["life"] - 1) * 3;
 	if (has_perk(me, "gain")) gain += gain * 20 / 100;
+	give_spoil(me, s["style"]);
 	me->add("yuanzheng/prestige", gain);
 	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n");

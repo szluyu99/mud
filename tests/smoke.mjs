@@ -245,6 +245,8 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng buy 4'); await page.waitForTimeout(1200);
   check('zjrogue: 买下名望', /换到了「名望」/.test(await out()), await out());
   await send(page, 'yuanzheng start sword'); await page.waitForTimeout(1500);
+  await send(page, 'yuanzheng resume'); await page.waitForTimeout(1500);
+  check('zjrogue: 中途可以接着打这一局', /接着打这一局/.test(await text()), (await text()).slice(-120));
   check('zjrogue: 命硬让开局有四条命', /4 条命/.test(await text()), await text());
   check('zjrogue: 剑客带着长剑开局', /长剑/.test(await out()), await out());
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
@@ -281,7 +283,8 @@ async function zjrogueExtras(page) {
     const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());
     // 这一趟只在前四关各选一次天赋，所以是 4 个
     const base = m ? 8 + 4 * 2 + ((+m[1]) - 1) * 3 : 0;
-    check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
+    check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
+  check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
   }
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
   check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
