@@ -9,17 +9,33 @@
 #define YZ_TREASURE "/clone/misc/yz_treasure"
 
 mapping *stages = ({
-	([ "type":"kill", "title":"一、剿匪", "room":"/d/city/guangchang", "who":"恶汉", "eid":"ehan",
-	   "hint":"去扬州广场，杀掉在那里闹事的恶汉（kill ehan）" ]),
-	([ "type":"item", "title":"二、夺宝", "room":"/d/city/nandajie1", "who":"守卫", "eid":"shouwei",
-	   "hint":"去南大街杀掉守卫，拿到他身上的宝物，再回宝昌客栈上交（yuanzheng submit）" ]),
-	([ "type":"ask", "title":"三、寻访", "room":"/d/city/wumiao", "who":"线人", "eid":"xianren",
-	   "hint":"去武庙找到线人，向他打听远征（ask xianren about 远征）" ]),
-	([ "type":"kill", "title":"四、截杀", "room":"/d/city/beimen", "who":"副手", "eid":"fushou",
-	   "hint":"去北门截杀匪首的副手（kill fushou）" ]),
-	([ "type":"boss", "title":"五、终局", "room":"/d/city/guangchang", "who":"匪首", "eid":"feishou",
-	   "hint":"回广场迎战匪首，赢下这一局（kill feishou）", "boss":1 ])
+	([ "type":"kill", "title":"一、剿匪", "key":"kill", "who":"恶汉", "eid":"ehan",
+	   "hint":"杀掉在那里闹事的恶汉（kill ehan）" ]),
+	([ "type":"item", "title":"二、夺宝", "key":"item", "who":"守卫", "eid":"shouwei",
+	   "hint":"杀掉守卫，拿到他身上的宝物，再回客店上交（yuanzheng submit）" ]),
+	([ "type":"ask", "title":"三、寻访", "key":"ask", "who":"线人", "eid":"xianren",
+	   "hint":"找到线人，向他打听远征（ask xianren about 远征）" ]),
+	([ "type":"kill", "title":"四、截杀", "key":"street", "who":"副手", "eid":"fushou",
+	   "hint":"截杀匪首的副手（kill fushou）" ]),
+	([ "type":"boss", "title":"五、终局", "key":"boss", "who":"匪首", "eid":"feishou",
+	   "hint":"迎战匪首，赢下这一局（kill feishou）", "boss":1 ])
 });
+
+// 每局随机挑一座城：目标、线人、匪首都在那座城里，不再每局都跑同一套扬州地点
+mapping cities = ([
+	"city": ([ "name":"扬州", "kill":"/d/city/guangchang", "item":"/d/city/nandajie1",
+	           "street":"/d/city/beimen", "ask":"/d/city/wumiao",
+	           "boss":"/d/city/guangchang", "inn":"/d/city/kedian" ]),
+	"suzhou": ([ "name":"苏州", "kill":"/d/suzhou/dongdajie2", "item":"/d/suzhou/dongdajie1",
+	             "street":"/d/suzhou/beidajie1", "ask":"/d/suzhou/hanshansi",
+	             "boss":"/d/suzhou/huqiu", "inn":"/d/suzhou/kedian" ]),
+	"hangzhou": ([ "name":"杭州", "kill":"/d/hangzhou/dadao1", "item":"/d/hangzhou/dalu1",
+	               "street":"/d/hangzhou/huagang", "ask":"/d/hangzhou/jingcisi",
+	               "boss":"/d/hangzhou/duanqiao", "inn":"/d/hangzhou/kedian" ]),
+	"quanzhou": ([ "name":"泉州", "kill":"/d/quanzhou/zhongxin", "item":"/d/quanzhou/xijie",
+	               "street":"/d/quanzhou/nanmen", "ask":"/d/quanzhou/chating",
+	               "boss":"/d/quanzhou/zhongxin", "inn":"/d/quanzhou/chating" ])
+]);
 
 // ---- 开局构筑：三种流派，各有一套初始功夫与 15 个专属天赋 ----
 mapping styles = ([
@@ -168,7 +184,7 @@ void heart_beat()
 		if (s["stage"] >= sizeof(stages)) continue;
 		def = stages[s["stage"]];
 		if (! objectp(env = environment(me))) continue;
-		if (base_name(env) != def["room"]) continue;
+		if (base_name(env) != stage_room(me, def)) continue;
 		if (def["type"] == "ask")
 		{
 			if (! find_my_info(me)) spawn(me, s["stage"]);
@@ -313,6 +329,30 @@ string style_of(object me)
 	return s ? s["style"] : "";
 }
 
+mapping city_of(object me)
+{
+	mapping s = state(me), c;
+
+	if (! s) return cities["city"];
+	c = cities[s["city"]];
+	return mapp(c) ? c : cities["city"];
+}
+
+string stage_room(object me, mapping def)
+{
+	mapping c = city_of(me);
+
+	return (c && stringp(def["key"])) ? c[def["key"]] : "/d/city/guangchang";
+}
+
+string room_name(string file)
+{
+	object ob;
+
+	if (! stringp(file) || ! objectp(ob = load_object(file))) return "那地方";
+	return ob->query("short") || file;
+}
+
 mapping cur_stage(object me)
 {
 	mapping s = state(me);
@@ -327,7 +367,7 @@ void spawn(object me, int stage)
 	mapping def = stages[stage];
 	object room, ob;
 
-	if (! objectp(room = load_object(def["room"]))) return;
+	if (! objectp(room = load_object(stage_room(me, def)))) return;
 
 	if (def["type"] == "ask")
 	{
@@ -356,7 +396,7 @@ int where(object me)
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (! mapp(def = cur_stage(me))) return notify_fail("五关已经打完了。\n");
 	env = environment(me);
-	write("stage=" + s["stage"] + " room=" + def["room"] +
+	write("stage=" + s["stage"] + " room=" + stage_room(me, def) +
 	      " here=" + (env ? base_name(env) : "none") + "\n");
 	return 1;
 }
@@ -374,7 +414,9 @@ void begin_stage(object me)
 	if (def["type"] == "ask" ? ! find_my_info(me) : ! find_my_enemy(me, s["stage"]))
 		spawn(me, s["stage"]);
 	tell_object(me, HIR "【远征】" NOR + def["title"] + "：" + def["hint"] + "\n");
-	if (objectp(env = environment(me)) && base_name(env) == def["room"])
+	tell_object(me, "  地点：" + city_of(me)["name"] + "·" + room_name(stage_room(me, def)) +
+		"（goto " + stage_room(me, def) + "）\n");
+	if (objectp(env = environment(me)) && base_name(env) == stage_room(me, def))
 		tell_object(me, HIC "目标就在此地。\n" NOR);
 }
 
@@ -572,7 +614,7 @@ int submit(object me)
 	if (! mapp(def = cur_stage(me)) || def["type"] != "item")
 		return notify_fail("现在不需要上交东西。\n");
 	env = environment(me);
-	if (! env || base_name(env) != BACK_ROOM)
+	if (! env || base_name(env) != city_of(me)["inn"])
 		return notify_fail("要把宝物带回宝昌客栈上交。\n");
 	if (! objectp(t = present("treasure", me)))
 		return notify_fail("你身上没有宝物。\n");
@@ -596,7 +638,7 @@ int on_die(object me)
 		me->revive(1);
 		me->set("qi", me->query("max_qi"));
 		me->set("eff_qi", me->query("max_qi"));
-		me->move(BACK_ROOM);
+		me->move(city_of(me)["inn"] || BACK_ROOM);
 		end_run(me);
 		return 1;
 	}
@@ -605,7 +647,7 @@ int on_die(object me)
 	me->set("eff_qi", me->query("max_qi"));
 	me->set("jing", me->query("max_jing"));
 	me->set("eff_jing", me->query("max_jing"));
-	me->move(BACK_ROOM);
+	me->move(city_of(me)["inn"] || BACK_ROOM);
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
@@ -635,8 +677,9 @@ string status(object me)
 				s["life"], s["max_life"] || MAX_LIFE, s["points"]);
 	}
 	def = stages[s["stage"]];
-	return sprintf("%s\n  目标：%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
-		def["title"], def["hint"], s["life"], s["max_life"] || MAX_LIFE, s["points"],
+	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
+		def["title"], def["hint"], city_of(me)["name"], room_name(stage_room(me, def)),
+		s["life"], s["max_life"] || MAX_LIFE, s["points"],
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 		me->query("yuanzheng/prestige"));
 }
@@ -695,7 +738,7 @@ int busy_menu(object me, mapping s)
 	return 1;
 }
 
-int start(object me, string style)
+int start(object me, string style, string city)
 {
 	mapping s, st;
 
@@ -712,7 +755,8 @@ int start(object me, string style)
 
 	s = ([ "stage":0, "life":MAX_LIFE + (has_perk(me, "life") ? 1 : 0),
 	       "points":has_perk(me, "point") ? 1 : 0, "talents":({}),
-	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0 ]);
+	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
+	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]) ]);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
 	s["buff"]["apply/damage"] = 30;
@@ -748,7 +792,8 @@ int start(object me, string style)
 	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
 	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
 		st["desc"] + "\n" +
-		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n");
+		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n" +
+		"这一趟去" + city_of(me)["name"] + "。\n");
 	begin_stage(me);
 	return 1;
 }

@@ -42,11 +42,12 @@ int menu(object me)
 
 int main(object me, string arg)
 {
-	string sub;
+	string sub, cty;
 	int n;
 
 	if (! userp(me)) return 0;
 	if (! arg || arg == "") return menu(me);
+	if (sscanf(arg, "start %s %s", sub, cty) == 2) return YZ_D->start(me, sub, cty);
 	if (sscanf(arg, "start %s", sub) == 1) return YZ_D->start(me, sub);
 	if (sscanf(arg, "buy %d", n) == 1) return YZ_D->buy(me, n);
 	if (sscanf(arg, "debugsp %d", n) == 1) return YZ_D->debug_sp(me, n);
@@ -56,7 +57,7 @@ int main(object me, string arg)
 
 	switch (arg)
 	{
-	case "start":	return YZ_D->start(me, "");
+	case "start":	return YZ_D->start(me, "", "");
 	case "status":	write(YZ_D->status(me) + "\n"); return 1;
 	case "talents":	YZ_D->talent_menu(me); return 1;
 	case "submit":	return YZ_D->submit(me);
@@ -76,6 +77,7 @@ int help(object me)
 {
 	write("远征：开局先选流派（剑客/拳师/刀客），五关依次是剿匪、夺宝、寻访、截杀、终局。\n"
 	      "每过一关得到 1 点属性点并三选一天赋（天赋按流派给）；三条命，倒下回客店；\n"
+	      "每局的城是随机挑的（扬州、苏州、杭州、泉州），五关都在那一带；\n"
 	      "五关全过后 yuanzheng settle 结算远征声望，声望可以在 yuanzheng shop 里换常驻特权。\n");
 	return 1;
 }
