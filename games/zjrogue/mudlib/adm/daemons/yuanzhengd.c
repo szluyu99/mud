@@ -7,6 +7,7 @@
 #define YZ_ENEMY "/kungfu/class/yuanzheng/enemy"
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
 #define YZ_TREASURE "/clone/misc/yz_treasure"
+#define YZ_ALLY "/kungfu/class/yuanzheng/helper"
 #define YZ_SPOIL_SWORD "/clone/misc/yz_spoil_sword"
 #define YZ_SPOIL_BLADE "/clone/misc/yz_spoil_blade"
 #define YZ_SPOIL_BOOTS "/clone/misc/yz_spoil_boots"
@@ -43,8 +44,8 @@ mapping cities = ([
 	"hangzhou": ([ "name":"杭州", "kill":"/d/hangzhou/dadao1", "item":"/d/hangzhou/dalu1",
 	               "street":"/d/hangzhou/huagang", "ask":"/d/hangzhou/jingcisi",
 	               "boss":"/d/hangzhou/duanqiao", "inn":"/d/hangzhou/kedian" ]),
-	"quanzhou": ([ "name":"泉州", "kill":"/d/quanzhou/zhongxin", "item":"/d/quanzhou/xijie",
-	               "street":"/d/quanzhou/nanmen", "ask":"/d/quanzhou/chating",
+	"quanzhou": ([ "name":"泉州", "kill":"/d/quanzhou/zhongxin", "item":"/d/quanzhou/nanmen",
+	               "street":"/d/quanzhou/beimen", "ask":"/d/quanzhou/chating",
 	               "boss":"/d/quanzhou/zhongxin", "inn":"/d/quanzhou/chating" ])
 ]);
 
@@ -356,6 +357,9 @@ void end_run(object me)
 	me->delete_override("die");
 	me->delete_temp("yuanzheng");
 	me->delete("yuanzheng/run");
+	// 帮手是这一局喊来的，收尾就散，别让它们在城里跟着玩家找人打
+	foreach (object ob in children(YZ_ALLY))
+		if (objectp(ob) && ob->query("yz_owner") == me->query("id")) destruct(ob);
 	if (me->query("qi") > me->query("max_qi")) me->set("qi", me->query("max_qi"));
 	if (me->query("eff_qi") > me->query("max_qi")) me->set("eff_qi", me->query("max_qi"));
 	if (me->query("jing") > me->query("max_jing")) me->set("jing", me->query("max_jing"));
@@ -483,13 +487,26 @@ void spawn(object me, int stage)
 int where(object me)
 {
 	mapping s = state(me), def;
-	object env;
+	object env, ob;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
+	// 还在挑路的时候 cur_stage 取的是排序后第一桩，别报「五关已经打完了」
+	if (s["planning"])
+	{
+		write("stage=planning room=" + stage_room(me, def_at(s, s["stage"])) +
+		      " here=" + (objectp(env = environment(me)) ? base_name(env) : "none") + "\n");
+		return 1;
+	}
 	if (! mapp(def = cur_stage(me))) return notify_fail("五关已经打完了。\n");
 	env = environment(me);
 	write("stage=" + s["stage"] + " room=" + stage_room(me, def) +
 	      " here=" + (env ? base_name(env) : "none") + "\n");
+	// 排障用：这一关的对手还剩多少血、是不是已经判过死
+	if (objectp(ob = find_my_enemy(me, s["stage"])))
+		write("foe=" + ob->query("qi") + "/" + ob->query("max_qi") +
+		      (ob->query_temp("yz_dead") ? " dead" : "") + "\n");
+	else if (objectp(ob = find_my_info(me, s["stage"])))
+		write("foe=info\n");
 	return 1;
 }
 
@@ -602,6 +619,7 @@ void talent_menu(object me)
 		str += t["name"] + " " + t["desc"] + ":yuanzheng choose " + (i + 1) + ZJSEP;
 	}
 	tell_object(me, str + "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
 }
 
 // ---------- 局中遭遇 ----------
@@ -636,6 +654,7 @@ void event_menu(object me)
 	for (i = 0; i < sizeof(ev["opts"]); i++)
 		str += ev["opts"][i] + ":yuanzheng event " + (i + 1) + ZJSEP;
 	tell_object(me, str + "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
 }
 
 int resolve_event(object me, int n)
@@ -740,6 +759,7 @@ void complete_stage(object me)
 	if (s["stage"] >= sizeof(stages))
 	{
 		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。\n" NOR);
+		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return;
 	}
 	s["event"] = ([ "id":random(sizeof(event_pool())) ]);
@@ -799,7 +819,8 @@ void enemy_died(object killer, object enemy)
 			t->move(me, 1);
 		}
 		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
-			room_name(city_of(me)["inn"]) + "上交（yuanzheng submit）。\n" NOR);
+			city_of(me)["name"] + "·" + room_name(city_of(me)["inn"]) +
+			"上交（yuanzheng submit）。\n" NOR);
 		return;
 	}
 	complete_stage(me);
@@ -827,7 +848,8 @@ int submit(object me)
 		return notify_fail("现在不需要上交东西。\n");
 	env = environment(me);
 	if (! env || base_name(env) != city_of(me)["inn"])
-		return notify_fail("要把宝物带回" + room_name(city_of(me)["inn"]) + "上交。\n");
+		return notify_fail("要把宝物带回" + city_of(me)["name"] + "·" +
+			room_name(city_of(me)["inn"]) + "上交。\n");
 	if (! objectp(t = present("treasure", me)))
 		return notify_fail("你身上没有宝物。\n");
 	destruct(t);
@@ -838,6 +860,25 @@ int submit(object me)
 // ---------- 死亡 ----------
 
 // 只有巫师用：把这一局的命改到 1，用来试「正常游玩死掉」这条分支
+// 巫师用：直接跳到第 n 关（1 起算），用来验后面的关卡
+int jump(object me, int n)
+{
+	mapping s = state(me), def;
+
+	if (wiz_level(me) < 4 && ! wizardp(me))
+		return notify_fail("这是巫师用的。\n");
+	if (! s) return notify_fail("先开一局远征（yuanzheng）。\n");
+	if (n < 1 || n > sizeof(stages)) return notify_fail("关卡是 1 到 " + sizeof(stages) + "。\n");
+	clean_world(me);
+	map_delete(s, "event");
+	map_delete(s, "planning");
+	s["stage"] = n - 1;
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	begin_stage(me);
+	return 1;
+}
+
 int debug_life(object me, int n)
 {
 	mapping s = state(me);
@@ -977,8 +1018,9 @@ string status(object me)
 
 	if (! s) return "尚未开始远征。";
 	if (s["stage"] >= sizeof(stages))
-		return sprintf("五关已经全部通过，可以结算。\n生命：%d/%d　属性点：%d\n天赋：%s\n远征声望：%d",
+		return sprintf("五关已经全部通过，可以结算。\n生命：%d/%d　属性点：%d%s\n天赋：%s\n远征声望：%d",
 			s["life"], s["max_life"] || MAX_LIFE, s["points"],
+			s["points"] > 0 ? "（还没选：yuanzheng choose 1-3）" : "",
 			sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 			me->query("yuanzheng/prestige"));
 	if (s["planning"])
@@ -995,9 +1037,11 @@ string status(object me)
 				s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0);
 	}
 	if (! mapp(def = def_at(s, s["stage"]))) return "这一局的状态有点乱，先 yuanzheng resume 看看。";
-	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d　铜钱：%d\n天赋：%s\n远征声望：%d",
+	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d%s　铜钱：%d\n天赋：%s\n远征声望：%d",
 		def["title"], def["hint"], city_of(me)["name"], room_name(stage_room(me, def)),
-		s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0,
+		s["life"], s["max_life"] || MAX_LIFE, s["points"],
+		s["points"] > 0 ? "（还没选：yuanzheng choose 1-3）" : "",
+		s["coin"] || 0,
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 		me->query("yuanzheng/prestige")) + "\n" + gear(me);
 }

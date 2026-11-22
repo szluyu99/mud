@@ -61,6 +61,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "event %d", n) == 1) return YZ_D->resolve_event(me, n);
 	if (sscanf(arg, "plan %d", n) == 1) return YZ_D->plan(me, n);
 	if (sscanf(arg, "life %d", n) == 1) return YZ_D->debug_life(me, n);
+	if (sscanf(arg, "jump %d", n) == 1) return YZ_D->jump(me, n);
 	if (sscanf(arg, "stall %d", n) == 1) return YZ_D->buy_stall(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
@@ -78,6 +79,7 @@ int main(object me, string arg)
 	case "pause":	return YZ_D->pause(me);
 	case "event":	return notify_fail("请选择 1 或 2：yuanzheng event 1\n");
 	case "life":	return YZ_D->debug_life(me, 1);
+	case "jump":	return notify_fail("用法：yuanzheng jump 1-" + "5。\n");
 	case "plan":	return notify_fail("请选择 1、2 或 3：yuanzheng plan 1\n");
 	case "stall":	return YZ_D->stall(me);
 	case "where":	return YZ_D->where(me);
