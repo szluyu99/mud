@@ -6,7 +6,7 @@
 int menu(object me)
 {
 	mapping s;
-	string str;
+	string str, goal;
 
 	YZ_D->ensure_world(me);
 	s = YZ_D->state(me);
@@ -29,14 +29,17 @@ int menu(object me)
 			str += "看悬赏榜:yuanzheng brief" ZJSEP;
 		else
 			str += "继续远征:yuanzheng resume" ZJSEP;
+		if (stringp(goal = YZ_D->goal_room(me)) && (! environment(me) || base_name(environment(me)) != goal))
+			str += "带我去目标:去 " + goal + ZJSEP;
 		str += "看当前目标:yuanzheng status" ZJSEP;
 		str += "局内摊位（" + (s["coin"] || 0) + " 钱）:yuanzheng stall" ZJSEP;
 		if (s["points"] > 0)
 			str += "选天赋:yuanzheng talents" ZJSEP;
-		if (s["stage"] < 5)
-			str += "上交宝物:yuanzheng submit" ZJSEP;
-		else
+		// 只在手上真有宝物时给「上交」，别的关卡点了只会得到一句「现在不需要」
+		if (s["stage"] >= 5)
 			str += "结算远征:yuanzheng settle" ZJSEP;
+		else if (present("treasure", me))
+			str += "上交宝物:yuanzheng submit" ZJSEP;
 		str += "放弃远征:yuanzheng abandon" ZJSEP;
 	}
 	str += "远征商店:yuanzheng shop" ZJSEP;

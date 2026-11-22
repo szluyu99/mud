@@ -267,9 +267,14 @@ async function zjrogueExtras(page) {
     check('zjrogue: 顶上有常驻的远征简讯', /远征：一、剿匪/.test(bar) && /命 \d\/\d/.test(bar) && /钱 \d+/.test(bar), bar);
   }
   check('zjrogue: 挑了先做剿匪', /你决定先去一、剿匪/.test(await text()), (await text()).slice(-120));
-  check('zjrogue: 目标地点会给出路径', /地点：.*（goto \/d\//.test(await text()), (await text()).slice(-160));
+  check('zjrogue: 目标地点会给出路径', /地点：.*（自动带路：去 \/d\//.test(await text()), (await text()).slice(-160));
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
 
+  // 菜单里的「带我去目标」按提示里的房间路径自动走过去（普通玩家没有 goto）
+  await send(page, 'yuanzheng'); await page.waitForTimeout(1200);
+  check('zjrogue: 菜单里有「带我去目标」', /带我去目标/.test(await page.evaluate(() => document.body.innerHTML)));
+  await send(page, '去 /d/city/guangchang');
+  check('zjrogue: 自动带路走到了关卡地点', await waitRoom(page, '中央广场', 40000), await room(page));
   // 一、剿匪：走到广场打死恶汉
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   // 连招提示要等第二拳才有，一刀秒掉就看不到；所以这里单独等一会再判过关

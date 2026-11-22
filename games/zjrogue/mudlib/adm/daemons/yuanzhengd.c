@@ -259,6 +259,17 @@ void heart_beat()
 }
 
 // 一行话：第几关、什么目标、还剩几条命、几个铜钱；没开局回空串
+// 现在该往哪走：挑路/遭遇/五关已过时没有；夺宝关摸到宝物以后是本城客店
+string goal_room(object me)
+{
+	mapping s = state(me), def;
+
+	if (! s || s["planning"] || mapp(s["event"])) return 0;
+	if (! mapp(def = cur_stage(me))) return 0;
+	if (def["type"] == "item" && present("treasure", me)) return city_of(me)["inn"];
+	return stage_room(me, def);
+}
+
 string status_line(object me)
 {
 	mapping s = state(me), def;
@@ -589,7 +600,7 @@ void begin_stage(object me)
 		spawn(me, s["stage"]);
 	tell_object(me, HIR "【远征】" NOR + def["title"] + "：" + def["hint"] + "\n");
 	tell_object(me, "  地点：" + city_of(me)["name"] + "·" + room_name(stage_room(me, def)) +
-		"（goto " + stage_room(me, def) + "）\n");
+		"（自动带路：去 " + stage_room(me, def) + "）\n");
 	// 重登回来的人，第一件事就是把「身上还带着局里的东西」摆出来给他看
 	foreach (object it in all_inventory(me))
 		if (it->query("yz_weapon") || it->query("yz_start_spoil"))
@@ -597,7 +608,7 @@ void begin_stage(object me)
 	if (objectp(env = environment(me)) && base_name(env) == stage_room(me, def))
 		tell_object(me, HIC "目标就在此地。\n" NOR);
 	else
-		tell_object(me, "（走不过去就 yuanzheng pause 收起来，回头 yuanzheng resume 接着打。）\n");
+		tell_object(me, "（点菜单里的「带我去」或输入上面那句，会自动走过去；要先去干别的就 yuanzheng pause。）\n");
 }
 
 void talent_menu(object me)
@@ -778,7 +789,7 @@ void enemy_fled(object me, object enemy, string room)
 	if ((int)enemy->query("yz_stage") != s["stage"]) return;
 	if (enemy->query("yz_owner") != me->query("id")) return;
 	tell_object(me, HIR "【远征】" + def["title"] + "：人跑了，这一关得重来。" NOR "\n");
-	tell_object(me, "  回去再堵他一回（goto " + stage_room(me, def) + "），路上先喘口气。\n");
+	tell_object(me, "  回去再堵他一回（自动带路：去 " + stage_room(me, def) + "），路上先喘口气。\n");
 	clean_world(me, s["stage"]);
 	call_out("respawn", 6, me, s["stage"]);
 }
@@ -821,6 +832,7 @@ void enemy_died(object killer, object enemy)
 		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
 			city_of(me)["name"] + "·" + room_name(city_of(me)["inn"]) +
 			"上交（yuanzheng submit）。\n" NOR);
+		tell_object(me, "  （自动带路：去 " + city_of(me)["inn"] + "）\n");
 		return;
 	}
 	complete_stage(me);

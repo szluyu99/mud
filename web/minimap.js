@@ -159,6 +159,14 @@
     return dist;
   }
   function wGoto(name) {
+    // 直接给房间路径（如 去 /d/city/guangchang）：远征的目标提示用这种写法，避免各城同名街道认错
+    if (/^\/d\//.test(name) && W.rooms[name]) {
+      if (!wCur) { note('还没认出你现在在哪个房间，走一步再试。'); return; }
+      if (name === wCur) { note('「' + W.rooms[name].s + '」就在这里。'); return; }
+      note('去' + W.rooms[name].s + '。');
+      wWalk(name);
+      return;
+    }
     let ts = wTargets(name);
     if (!ts.size) {   // 没有完全同名的，再试名字里包含这几个字的（只有一种名字时才用）
       const like = new Set();
