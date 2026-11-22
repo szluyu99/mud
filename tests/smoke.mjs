@@ -253,6 +253,10 @@ async function zjrogueExtras(page) {
   check('zjrogue: 命硬让开局有四条命', /4 条命/.test(await text()), await text());
   check('zjrogue: 剑客带着长剑开局', /长剑/.test(await out()), await out());
   check('zjrogue: 开局随机挑一座城', /这一趟去(扬州|苏州|杭州|泉州)/.test(await text()), (await text()).slice(-120));
+  // 开局先出一张悬赏榜，三桩活儿自己挑先做哪桩
+  check('zjrogue: 开局先看悬赏榜', /悬赏榜/.test(await text()) && /先去哪一桩/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng plan 1'); await page.waitForTimeout(2000);
+  check('zjrogue: 挑了先做剿匪', /你决定先去一、剿匪/.test(await text()), (await text()).slice(-120));
   check('zjrogue: 目标地点会给出路径', /地点：.*（goto \/d\//.test(await text()), (await text()).slice(-160));
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());
 

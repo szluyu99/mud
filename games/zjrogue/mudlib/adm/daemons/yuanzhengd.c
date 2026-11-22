@@ -205,6 +205,24 @@ void create()
 	set_heart_beat(2);
 }
 
+// 开局挑路线后，五关的先后可以变：order 里存的是 stages 的下标，stage 只是走到第几关
+int real_stage(mapping s, int pos)
+{
+	int i;
+
+	if (! mapp(s)) return pos;
+	if (! arrayp(s["order"]) || pos < 0 || pos >= sizeof(s["order"])) return pos;
+	i = s["order"][pos];
+	return (i >= 0 && i < sizeof(stages)) ? i : pos;
+}
+
+mapping def_at(mapping s, int pos)
+{
+	int i = real_stage(s, pos);
+
+	return (i >= 0 && i < sizeof(stages)) ? stages[i] : 0;
+}
+
 // 玩家一到关卡地点就把目标放出来，避免目标在空房间里被别人打掉
 void heart_beat()
 {
@@ -216,7 +234,7 @@ void heart_beat()
 		if (! objectp(me) || ! me->query("born")) continue;
 		if (! mapp(s = me->query("yuanzheng/run")) && ! mapp(s = me->query_temp("yuanzheng"))) continue;
 		if (s["stage"] >= sizeof(stages)) continue;
-		def = stages[s["stage"]];
+		if (! mapp(def = def_at(s, s["stage"]))) continue;
 		if (! objectp(env = environment(me))) continue;
 		if (base_name(env) != stage_room(me, def)) continue;
 		if (def["type"] == "ask")
@@ -393,14 +411,15 @@ mapping cur_stage(object me)
 
 	if (! s) return 0;
 	if (s["stage"] < 0 || s["stage"] >= sizeof(stages)) return 0;
-	return stages[s["stage"]];
+	return def_at(s, s["stage"]);
 }
 
 void spawn(object me, int stage)
 {
-	mapping def = stages[stage];
+	mapping s = state(me), def = def_at(s, stage);
 	object room, ob;
 
+	if (! mapp(def)) return;
 	if (! objectp(room = load_object(stage_room(me, def)))) return;
 
 	if (def["type"] == "ask")
@@ -435,15 +454,78 @@ int where(object me)
 	return 1;
 }
 
+// 开局先看一张悬赏榜：三桩活儿摆在面前，自己挑先做哪桩
+string brief_text(object me)
+{
+	mapping s = state(me), c = city_of(me);
+	string str;
+	int i, k;
+
+	if (! s) return "";
+	str = "城门口贴着一张悬赏榜，墨迹还是新的：\n";
+	for (i = 0; i < 3; i++)
+	{
+		k = real_stage(s, i);
+		str += sprintf("  %s　%s·%s\n", stages[k]["title"], c["name"],
+			room_name(stage_room(me, stages[k])));
+	}
+	if (has_perk(me, "scout"))
+		for (i = 3; i < sizeof(stages); i++)
+		{
+			k = real_stage(s, i);
+			str += sprintf("  %s　%s·%s（耳目打听来的）\n", stages[k]["title"], c["name"],
+				room_name(stage_room(me, stages[k])));
+		}
+	else
+		str += "  四、截杀　五、终局　（榜上没写是谁，走到跟前才知道）\n";
+	return str;
+}
+
+void brief_menu(object me)
+{
+	mapping s = state(me);
+	string str;
+
+	if (! s) return;
+	str = ZJOBLONG "远征简报\n" + brief_text(me) + "先去哪一桩？\n" ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
+	str += stages[real_stage(s, 0)]["title"] + ":yuanzheng plan 1" ZJSEP;
+	str += stages[real_stage(s, 1)]["title"] + ":yuanzheng plan 2" ZJSEP;
+	str += stages[real_stage(s, 2)]["title"] + ":yuanzheng plan 3" ZJSEP;
+	tell_object(me, str + "\n");
+}
+
+// 选中一桩活儿排到最前面，剩下的按原序，截杀与终局仍压在最后
+int plan(object me, int n)
+{
+	mapping s = state(me);
+	int *open, pick, *rest;
+	int i;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (! s["planning"]) return notify_fail("这一局的路线已经定下了。\n");
+	if (n < 1 || n > 3) return notify_fail("请选择 1、2 或 3。\n");
+	open = ({ real_stage(s, 0), real_stage(s, 1), real_stage(s, 2) });
+	pick = open[n - 1];
+	rest = ({});
+	for (i = 0; i < sizeof(open); i++)
+		if (open[i] != pick) rest += ({ open[i] });
+	s["order"] = ({ pick }) + rest + ({ 3, 4 });
+	map_delete(s, "planning");
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, "你决定先去" + stages[pick]["title"] + "。\n");
+	begin_stage(me);
+	return 1;
+}
+
 void begin_stage(object me)
 {
 	mapping s = state(me), def;
 	object env;
 
 	if (! s) return;
-	if (s["stage"] >= sizeof(stages))
-		return;
-	def = stages[s["stage"]];
+	if (s["stage"] >= sizeof(stages)) return;
+	if (! mapp(def = def_at(s, s["stage"]))) return;
 	// 开局就把目标放到地点上，玩家走过去就能打，不用等心跳
 	if (def["type"] == "ask" ? ! find_my_info(me) : ! find_my_enemy(me, s["stage"]))
 		spawn(me, s["stage"]);
@@ -582,8 +664,10 @@ int resolve_event(object me, int n)
 
 void complete_stage(object me)
 {
-	mapping s = state(me), def = stages[s["stage"]];
+	mapping s = state(me), def;
 	int earned;
+
+	if (! s || ! mapp(def = def_at(s, s["stage"]))) return;
 
 	clean_world(me, s["stage"]);
 	s["stage"] += 1;
@@ -626,7 +710,8 @@ void enemy_died(object killer, object enemy)
 		object t = new(YZ_TREASURE);
 		t->set("yz_stage", s["stage"]);
 		t->move(me, 1);
-		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回宝昌客栈上交（yuanzheng submit）。\n" NOR);
+		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
+			room_name(city_of(me)["inn"]) + "上交（yuanzheng submit）。\n" NOR);
 		return;
 	}
 	complete_stage(me);
@@ -654,7 +739,7 @@ int submit(object me)
 		return notify_fail("现在不需要上交东西。\n");
 	env = environment(me);
 	if (! env || base_name(env) != city_of(me)["inn"])
-		return notify_fail("要把宝物带回宝昌客栈上交。\n");
+		return notify_fail("要把宝物带回" + room_name(city_of(me)["inn"]) + "上交。\n");
 	if (! objectp(t = present("treasure", me)))
 		return notify_fail("你身上没有宝物。\n");
 	destruct(t);
@@ -718,6 +803,9 @@ string status(object me)
 			s["life"], s["max_life"] || MAX_LIFE, s["points"],
 			sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
 			me->query("yuanzheng/prestige"));
+	if (s["planning"])
+		return brief_text(me) + "（先挑一条路：yuanzheng plan 1|2|3）\n生命：" +
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　铜钱：" + (s["coin"] || 0);
 	if (mapp(s["event"]))
 	{
 		mapping *pool = event_pool();
@@ -727,7 +815,7 @@ string status(object me)
 				pool[id]["title"], pool[id]["desc"],
 				s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0);
 	}
-	def = stages[s["stage"]];
+	if (! mapp(def = def_at(s, s["stage"]))) return "这一局的状态有点乱，先 yuanzheng resume 看看。";
 	return sprintf("%s\n  目标：%s\n  地点：%s·%s\n生命：%d/%d　属性点：%d　铜钱：%d\n天赋：%s\n远征声望：%d",
 		def["title"], def["hint"], city_of(me)["name"], room_name(stage_room(me, def)),
 		s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0,
@@ -901,7 +989,7 @@ int busy_menu(object me, mapping s)
 	if (s["stage"] >= sizeof(stages))
 		str = ZJOBLONG "这一局五关已经打完了，先结算，才能再开一局。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
 	else
-		str = ZJOBLONG "你还有一局远征没打完（" + stages[s["stage"]]["title"] + "）。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
+		str = ZJOBLONG "你还有一局远征没打完（" + def_at(s, s["stage"])["title"] + "）。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
 	str += "继续这一局:yuanzheng resume" ZJSEP;
 	str += "结算这一局:yuanzheng settle" ZJSEP;
 	str += "放弃这一局:yuanzheng abandon" ZJSEP;
@@ -928,7 +1016,8 @@ int start(object me, string style, string city)
 	       "points":(has_perk(me, "point") ? 1 : 0) + (has_perk(me, "talent") ? 1 : 0), "talents":({}),
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
 	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
-	       "coin":0, "charm":0, "stall":({}) ]);
+	       "coin":0, "charm":0, "stall":({}),
+	       "order":({0,1,2,3,4}), "planning":1 ]);
 	roll_stall(me, s);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
@@ -976,7 +1065,7 @@ int start(object me, string style, string city)
 			plan += (k ? "，" : "") + stages[k]["title"] + "：" + stages[k]["who"];
 		tell_object(me, "（耳目打听到这一局五关要打的人：" + plan + "）\n");
 	}
-	begin_stage(me);
+	brief_menu(me);
 	return 1;
 }
 
@@ -1081,6 +1170,11 @@ int resume(object me)
 		return 1;
 	}
 	tell_object(me, "接着打这一局。\n");
+	if (s["planning"])
+	{
+		brief_menu(me);
+		return 1;
+	}
 	begin_stage(me);
 	return 1;
 }
@@ -1136,7 +1230,7 @@ void ensure_world(object me)
 	mapping s = state(me), def;
 
 	if (! s || s["stage"] >= sizeof(stages)) return;
-	def = stages[s["stage"]];
+	if (! mapp(def = def_at(s, s["stage"]))) return;
 	if (def["type"] == "ask")
 	{
 		if (! find_my_info(me)) spawn(me, s["stage"]);
