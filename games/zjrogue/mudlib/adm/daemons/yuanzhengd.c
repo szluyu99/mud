@@ -9,6 +9,8 @@
 #define YZ_TREASURE "/clone/misc/yz_treasure"
 #define YZ_SPOIL_SWORD "/clone/misc/yz_spoil_sword"
 #define YZ_SPOIL_BLADE "/clone/misc/yz_spoil_blade"
+#define YZ_SPOIL_BOOTS "/clone/misc/yz_spoil_boots"
+#define YZ_SPOIL_MIRROR "/clone/misc/yz_spoil_mirror"
 #define YZ_SPOIL_ARMOR "/clone/misc/yz_spoil_armor"
 
 // 前三桩各有各的好处，挑哪桩先做就真的一回事：
@@ -126,13 +128,13 @@ mapping *perks = ({
 	([ "id":"point", "name":"老练", "desc":"每局开局多 1 点属性点", "cost":30, "tier":1 ]),
 	([ "id":"life",	 "name":"命硬", "desc":"每局多 1 条命", "cost":60, "tier":1 ]),
 	([ "id":"atk",	 "name":"磨砺", "desc":"每局开局再加 10 点攻击", "cost":40, "tier":1 ]),
-	([ "id":"gain",	 "name":"名望", "desc":"结算得到的声望 +20%", "cost":80, "tier":1 ]),
-	([ "id":"talent", "name":"师承", "desc":"开局多 1 点天赋点", "cost":90, "tier":2, "need":"point" ]),
+	([ "id":"gain",	 "name":"名望", "desc":"结算得到的声望 +20%", "cost":60, "tier":1 ]),
+	([ "id":"talent", "name":"师承", "desc":"开局多 1 点天赋点", "cost":85, "tier":2, "need":"point" ]),
 	([ "id":"coin",	 "name":"眼力", "desc":"每关多捡 4 枚铜钱", "cost":70, "tier":2, "need":"atk" ]),
-	([ "id":"spoil", "name":"旧藏", "desc":"开局带一件上次的战利品", "cost":110, "tier":2, "need":"life" ]),
-	([ "id":"scout", "name":"耳目", "desc":"开局就知道这一局五关要打谁", "cost":50, "tier":2, "need":"gain" ]),
-	([ "id":"spoil2", "name":"行囊", "desc":"开局带两件战利品（先买旧藏）", "cost":160, "tier":3, "need":"spoil" ]),
-	([ "id":"life2", "name":"铁骨", "desc":"每局再多 1 条命（先买命硬）", "cost":140, "tier":3, "need":"life" ])
+	([ "id":"spoil", "name":"旧藏", "desc":"开局带一件上次的战利品", "cost":95, "tier":2, "need":"life" ]),
+	([ "id":"scout", "name":"耳目", "desc":"开局就知道这一局五关要打谁", "cost":45, "tier":2, "need":"gain" ]),
+	([ "id":"spoil2", "name":"行囊", "desc":"开局带两件战利品（先买旧藏）", "cost":140, "tier":3, "need":"spoil" ]),
+	([ "id":"life2", "name":"铁骨", "desc":"每局再多 1 条命（先买命硬）", "cost":120, "tier":3, "need":"life" ])
 });
 
 int has_perk(object me, string id)
@@ -253,6 +255,18 @@ void heart_beat()
 		}
 		if (! find_my_enemy(me, s["stage"])) spawn(me, s["stage"]);
 	}
+}
+
+// 一行话：第几关、什么目标、还剩几条命、几个铜钱；没开局回空串
+string status_line(object me)
+{
+	mapping s = state(me), def;
+
+	if (! s) return "";
+	if (! mapp(def = cur_stage(me)))
+		return "远征：五关都过了，可以结算（yuanzheng）";
+	return "远征：" + def["title"] + "　命 " + s["life"] + "/" + s["max_life"] +
+		"　钱 " + (s["coin"] || 0);
 }
 
 mapping state(object me)
@@ -517,6 +531,8 @@ void brief_menu(object me)
 	str += stages[real_stage(s, 1)]["title"] + ":yuanzheng plan 2" ZJSEP;
 	str += stages[real_stage(s, 2)]["title"] + ":yuanzheng plan 3" ZJSEP;
 	tell_object(me, str + "\n");
+	// 简报时还没挑路，简讯先按榜上第一桩显示
+	tell_object(me, "YZ#" + status_line(me) + "\n");
 }
 
 // 选中一桩活儿排到最前面，剩下的按原序，截杀与终局仍压在最后
@@ -877,6 +893,20 @@ int in_battle(object me)
 	return 0;
 }
 
+// 这一下有没有「人」在动手。中毒、陷阱、从高处摔下来都算不掉命：
+// 没人在打你的死，远征不认。身上有一笔遗留的伤害来源 temp 时也按有人算——
+// 打斗的人走开了还可能接着掉血。
+int by_hand(object me)
+{
+	object who;
+
+	if (in_battle(me)) return 1;
+	if (objectp(who = me->query_temp("last_damage_from")) && objectp(environment(who)) &&
+	    environment(who) == environment(me))
+		return 1;
+	return 0;
+}
+
 int on_die(object me)
 {
 	mapping s = state(me);
@@ -884,12 +914,16 @@ int on_die(object me)
 
 	if (! s) return 0;
 	// 正在正常游玩（身边没有在打的人和局里的目标）时死了，不该拿远征的命来抵
-	own = in_battle(me);
+	own = by_hand(me);
 	// 只剩最后一条命时不再豁免：一条命都拿来兜底就等于没有终点
 	if (s["life"] > 1 && ! own)
 	{
-		tell_object(me, HIY "（这一下不是远征里的打斗，远征的 " + s["life"] +
-			" 条命还在。接着打就打 yuanzheng resume。）" NOR "\n");
+		if (by_hand(me))
+			tell_object(me, HIY "（这一下不是在关卡里打出来的，远征的 " + s["life"] +
+				" 条命还在。接着打就打 yuanzheng resume。）" NOR "\n");
+		else
+			tell_object(me, HIY "（这一下不是人打的，远征的 " + s["life"] +
+				" 条命还在。接着打就打 yuanzheng resume。）" NOR "\n");
 		// 让原版的死亡流程照常走：该掉的东西、该回的地点都由它自己处理
 		return 0;
 	}
@@ -1304,12 +1338,7 @@ void give_start_spoil(object me, int n)
 	string file, nm;
 
 	if (! stringp(style) || ! sizeof(style)) style = "sword";
-	switch (style)
-	{
-	case "blade":	file = YZ_SPOIL_BLADE; break;
-	case "fist":	file = YZ_SPOIL_ARMOR; break;
-	default:	file = YZ_SPOIL_SWORD; break;
-	}
+	file = spoil_file(style);
 	while (n-- > 0)
 	{
 		object ob = new(file);
@@ -1325,17 +1354,23 @@ void give_start_spoil(object me, int n)
 	tell_object(me, "（行囊里带着上次的" + (nm || "战利品") + "，已经穿上）\n");
 }
 
+// 战利品按流派给，另外偶尔掉一件「江湖货」：防御护腕/轻快靴子/结实护心镜
+string spoil_file(string style)
+{
+	string *pool = ({ YZ_SPOIL_ARMOR, YZ_SPOIL_BOOTS, YZ_SPOIL_MIRROR });
+
+	if (style == "sword") return YZ_SPOIL_SWORD;
+	if (style == "blade") return YZ_SPOIL_BLADE;
+	if (random(3) == 0) return pool[random(sizeof(pool))];
+	return YZ_SPOIL_ARMOR;
+}
+
 void give_spoil(object me, string style)
 {
 	string file;
 	object ob;
 
-	switch (style)
-	{
-	case "sword":	file = YZ_SPOIL_SWORD; break;
-	case "blade":	file = YZ_SPOIL_BLADE; break;
-	default:	file = YZ_SPOIL_ARMOR; break;
-	}
+	file = spoil_file(style);
 	ob = new(file);
 	if (! ob) return;
 	if (! ob->move(me))

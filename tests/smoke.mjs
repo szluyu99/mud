@@ -261,6 +261,11 @@ async function zjrogueExtras(page) {
     check('zjrogue: 悬赏榜上写着各桩的好处', /攻击 \+10/.test(t) && /多捡 10 枚/.test(t) && /多 1 点天赋/.test(t), t.slice(-320));
   }
   await send(page, 'yuanzheng plan 1'); await page.waitForTimeout(2000);
+  {
+    // 往上翻着看记录时也看得见第几关、几条命
+    const bar = await page.evaluate(() => { const e = document.getElementById('yzbar'); return e ? e.textContent : ''; });
+    check('zjrogue: 顶上有常驻的远征简讯', /远征：一、剿匪/.test(bar) && /命 \d\/\d/.test(bar) && /钱 \d+/.test(bar), bar);
+  }
   check('zjrogue: 挑了先做剿匪', /你决定先去一、剿匪/.test(await text()), (await text()).slice(-120));
   check('zjrogue: 目标地点会给出路径', /地点：.*（goto \/d\//.test(await text()), (await text()).slice(-160));
   check('zjrogue: first target spawns right away', /目标已出现：恶汉/.test(await out()), await out());

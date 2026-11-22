@@ -719,6 +719,30 @@ function writeToMU(str) {
 	mycmdsob.append('<button style="color:'+textcol+';margin:2px;width:'+w+'px;height:42px;" type="button" onclick="close_mycmds()">关闭<br>选项</button>');
 };
 
+var yzLast = '';
+// 远征进行中在界面上挂一条常驻简讯（第几关、几条命、几枚铜钱），
+// 由 yuanzhengd 在关卡推进/倒下/结算/status 时推 YZ# 开头的行。
+function writeToYZ(str) {
+	str = str.replace(/[\r\n]+$/, '');
+	// 关卡一变就单独存一次：等 15 秒的自动存档，途中关页面会把刚打死的目标打回去
+	if(str.length && str !== yzLast) {
+		yzLast = str;
+		try { if(window.MudWasm && MudWasm.sync) setTimeout(function(){ MudWasm.sync(); }, 300); } catch(e) {}
+	}
+	if(!str.length) {
+		if($('#yzbar').length) {
+			$('#yzbar').remove();
+			adjustLayout();
+		}
+		return;
+	}
+	if(!$('#yzbar').length) {
+		outob.before('<div id="yzbar" onclick="cmdsc(this)" id2="yuanzheng" style="padding:4px 8px;margin:2px 0 4px 0;border-radius:4px;background:#3a2f1e;color:#f0d9a8;font-size:13px;cursor:pointer">' + str + '</div>');
+	} else {
+		$('#yzbar').text(str);
+	}
+};
+
 function writeToScreen(str) {
 	//str = str.replace(/\【/, '[ ');
 	//str = str.replace(/\】/, ' ]');
@@ -1258,6 +1282,10 @@ function writeServerData(buf) {
 		else if(line.substr(0,4)=='020')
 		{
 			writeToPop(line.substr(4));
+		}
+		else if(line.substr(0,3)=='YZ#')
+		{
+			writeToYZ(line.substr(3));
 		}
 		else if(line.substr(0,4)=='021')
 		{
