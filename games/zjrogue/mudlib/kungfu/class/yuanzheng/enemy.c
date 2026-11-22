@@ -207,8 +207,19 @@ void heart_beat()
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
 	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
 		die(query_temp("last_damage_from"));
-	if (query("yz_kind") == "vice" && query("qi") * 10 <= query("max_qi") * 3)
-		vice_fled();
+	// 副手三成血开跑，但离倒下只差几拳的时候就不跑了，否则快到手的窗口一下全白费。
+	// 逃跑这条路得撞上两次才跑得掉（撞一次摔一跤、掉三成血），玩家至少有把手拦一拦。
+	if (query("yz_kind") == "vice" && query("qi") * 10 <= query("max_qi") * 3 && query("qi") * 20 > query("max_qi"))
+	{
+		if (! query_temp("yz_escape"))
+		{
+			set_temp("yz_escape", 1);
+			set("qi", query("qi") * 7 / 10);
+			message_vision(HIR "$N往巷口一钻，被$n一把揪了回来！\n" NOR, this_object(), query_temp("last_damage_from"));
+		}
+		else
+			vice_fled();
+	}
 	if (query("yz_kind") == "guard" && objectp(query_temp("last_damage_from")))
 		guard_shout();
 }

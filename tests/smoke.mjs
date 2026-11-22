@@ -300,7 +300,9 @@ async function zjrogueExtras(page) {
 
   // 四、截杀副手
   await send(page, 'goto /d/city/beimen'); await page.waitForTimeout(2500);
-  check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成/, 60000), await out());
+  // 副手血到三成会掉头跑，跑了这一关得重来；这里要么打死，要么认下「人跑了」这一手
+  check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成|人跑了，这一关得重来/, 60000),
+    await out());
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
