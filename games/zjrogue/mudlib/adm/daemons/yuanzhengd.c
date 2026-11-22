@@ -236,6 +236,12 @@ mapping def_at(mapping s, int pos)
 	return (i >= 0 && i < sizeof(stages)) ? stages[i] : 0;
 }
 
+void push_hint(object me)
+{
+	if (objectp(me) && ! state(me) && ! me->query("yuanzheng/runs"))
+		tell_object(me, "YZ#江湖远征：点这里开一局（五关，三四分钟一局）\n");
+}
+
 void push_bar(object me)
 {
 	if (objectp(me) && state(me)) tell_object(me, "YZ#" + status_line(me) + "\n");
@@ -250,7 +256,16 @@ void heart_beat()
 	foreach (me in users())
 	{
 		if (! objectp(me) || ! me->query("born")) continue;
-		if (! mapp(s = me->query("yuanzheng/run")) && ! mapp(s = me->query_temp("yuanzheng"))) continue;
+		if (! mapp(s = me->query("yuanzheng/run")) && ! mapp(s = me->query_temp("yuanzheng")))
+		{
+			// 还没打过远征的新人：入口原来藏在「系统」菜单里，几乎找不到。挂一条顶栏提示，点了就是远征菜单
+			if (! me->query("yuanzheng/runs") && ! me->query_temp("yz_hint"))
+			{
+				me->set_temp("yz_hint", 1);
+				call_out("push_hint", 4, me);
+			}
+			continue;
+		}
 		// 刷新页面重新登录后：马上补回局内加成和倒下的接管（原来要等玩家点一下远征才补），顶栏也重新挂上
 		if (! me->query_temp("yz_bar"))
 		{

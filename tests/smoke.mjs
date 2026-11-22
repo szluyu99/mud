@@ -219,6 +219,9 @@ async function zjmudExtras(page, ctx) {
 async function zjrogueExtras(page) {
   for (const c of ['east', 'out', 'pianshu jhx', 'wash', 'born 扬州人氏']) { await send(page, c); await page.waitForTimeout(2000); }
   check('zjrogue: born in 宝昌客栈', await waitRoom(page, '宝昌客栈', 8000), await room(page));
+  // 新人找不到远征入口（原来藏在「系统」菜单里）：出生后顶栏先挂一条提示
+  check('zjrogue: 新人顶栏提示开一局远征', await until(page, () => /点这里开一局/.test(document.getElementById('yzbar')?.textContent || ''), 15000),
+    await page.evaluate(() => document.getElementById('yzbar')?.textContent || '(无顶栏)'));
   const text = () => page.evaluate(() => document.body.innerText);
   const out = () => page.evaluate(() => [...document.querySelectorAll('#out')].map((e) => e.innerText).sort((a, b) => b.length - a.length)[0] || '');
   const waitText = async (re, ms) => { for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (re.test(await text())) return true; await page.waitForTimeout(400); } return false; };
