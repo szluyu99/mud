@@ -282,6 +282,10 @@ async function zjrogueExtras(page) {
   // 剑客第二下起会喊「剑势连绵」；打得快时这句可能被后面的战况顶出可见区，所以这里放宽到整段
   check('zjrogue: 剑客连招会叠伤害', /剑势连绵|造成 \d+ 点/.test(await text()), (await text()).slice(-200));
   check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
+  // 遭遇弹窗被关掉以后，菜单里得有入口找回来，否则下一关一直不开
+  await page.evaluate(() => { try { $('.ui-dialog-content').dialog('close'); } catch (e) { /* none */ } });
+  await page.evaluate(() => document.getElementById('yzbar')?.click()); await page.waitForTimeout(1500);
+  check('zjrogue: 点顶栏打开菜单，里面能找回遭遇', /yuanzheng event"/.test(await page.evaluate(() => document.body.innerHTML)));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
   check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng stall'); await page.waitForTimeout(1200);
@@ -325,6 +329,7 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
   check('zjrogue: 五关打完后菜单不报错', /五关已经全部通过/.test(await text()) && ! /Array index|未知错误/.test(await text()), (await text()).slice(-200));
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
+  check('zjrogue: 结算后顶栏简讯收起', await until(page, () => !document.getElementById('yzbar'), 5000));
   await waitText(/获得远征声望 \d+ 点/, 15000);
   {
     const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());

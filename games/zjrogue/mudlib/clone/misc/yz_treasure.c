@@ -15,6 +15,7 @@ void create()
 		set("value", 0);
 		set("no_sell", 1);
 		set("no_store", 1);
+		set("no_drop", "这是要交回客店的东西，别乱扔。\n");
 	}
 	setup();
 }

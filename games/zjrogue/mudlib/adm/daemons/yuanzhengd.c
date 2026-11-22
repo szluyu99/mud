@@ -254,6 +254,9 @@ void heart_beat()
 			if (! find_my_info(me)) spawn(me, s["stage"]);
 			continue;
 		}
+		// 夺宝关打倒守卫、摸到宝物之后，回客店的路上不能再刷一个守卫出来，
+		// 否则玩家还站在原地时会被新守卫缠住，看着像「打不死又冒出来」
+		if (def["type"] == "item" && present("treasure", me)) continue;
 		if (! find_my_enemy(me, s["stage"])) spawn(me, s["stage"]);
 	}
 }
@@ -368,6 +371,8 @@ void end_run(object me)
 	me->delete_override("die");
 	me->delete_temp("yuanzheng");
 	me->delete("yuanzheng/run");
+	// 空的简讯让界面把顶栏收掉，不然结算后还挂着「五、终局」
+	tell_object(me, "YZ#\n");
 	// 帮手是这一局喊来的，收尾就散，别让它们在城里跟着玩家找人打
 	foreach (object ob in children(YZ_ALLY))
 		if (objectp(ob) && ob->query("yz_owner") == me->query("id")) destruct(ob);
@@ -611,6 +616,12 @@ void begin_stage(object me)
 		tell_object(me, "（点菜单里的「带我去」或输入上面那句，会自动走过去；要先去干别的就 yuanzheng pause。）\n");
 }
 
+// 按已经选过几个天赋往后翻，一关给两点时第二张不会和第一张一模一样
+int talent_base(mapping s, mapping *pool)
+{
+	return ((arrayp(s["talents"]) ? sizeof(s["talents"]) : 0) * 3) % sizeof(pool);
+}
+
 void talent_menu(object me)
 {
 	mapping s = state(me), t;
@@ -619,10 +630,9 @@ void talent_menu(object me)
 	string str;
 
 	if (! s) return;
-	base = (s["stage"] < 1 ? 0 : s["stage"] - 1) * 3;
 	pool = talents[s["style"]];
 	if (! arrayp(pool)) pool = talents["fist"];
-	base = base % sizeof(pool);
+	base = talent_base(s, pool);
 	str = ZJOBLONG "选一个天赋（属性点：" + s["points"] + "）\n" ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
 	for (i = 0; i < 3; i++)
 	{
@@ -666,6 +676,16 @@ void event_menu(object me)
 		str += ev["opts"][i] + ":yuanzheng event " + (i + 1) + ZJSEP;
 	tell_object(me, str + "\n");
 	tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
+int show_event(object me)
+{
+	mapping s = state(me);
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (! mapp(s["event"])) return notify_fail("现在没有遇到什么事。\n");
+	event_menu(me);
+	return 1;
 }
 
 int resolve_event(object me, int n)
@@ -850,6 +870,8 @@ void ask_done(object me, object npc)
 }
 
 // 交宝物
+string inn_room(object me) { return city_of(me)["inn"]; }
+
 int submit(object me)
 {
 	mapping s = state(me), def;
@@ -1365,7 +1387,7 @@ int choose(object me, int n)
 	if (n < 1 || n > 3) return notify_fail("请选择 1、2 或 3。\n");
 	pool = talents[s["style"]];
 	if (! arrayp(pool)) pool = talents["fist"];
-	base = ((s["stage"] < 1 ? 0 : s["stage"] - 1) * 3) % sizeof(pool);
+	base = talent_base(s, pool);
 	t = pool[(base + n - 1) % sizeof(pool)];
 	apply_talent(me, t);
 	s["talents"] += ({ t["name"] });
@@ -1373,6 +1395,8 @@ int choose(object me, int n)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	tell_object(me, "你选择了天赋【" + t["name"] + "】：" + t["desc"] + "。\n");
+	// 一关给了两点时，选完一个接着弹下一张，不用再去菜单里找
+	if (s["points"] > 0) talent_menu(me);
 	return 1;
 }
 

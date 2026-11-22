@@ -737,7 +737,7 @@ function writeToYZ(str) {
 		return;
 	}
 	if(!$('#yzbar').length) {
-		outob.before('<div id="yzbar" onclick="cmdsc(this)" id2="yuanzheng" style="padding:4px 8px;margin:2px 0 4px 0;border-radius:4px;background:#3a2f1e;color:#f0d9a8;font-size:13px;cursor:pointer">' + str + '</div>');
+		outob.before('<div id="yzbar" onclick="sock.emit(\'stream\',\'yuanzheng\\n\')" style="padding:4px 8px;margin:2px 0 4px 0;border-radius:4px;background:#3a2f1e;color:#f0d9a8;font-size:13px;cursor:pointer">' + str + '</div>');
 	} else {
 		$('#yzbar').text(str);
 	}

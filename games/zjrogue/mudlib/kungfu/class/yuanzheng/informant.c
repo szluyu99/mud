@@ -25,7 +25,14 @@ void create()
 	set("qi", 500);
 	set("combat_exp", 10000);
 	set("shen_type", 1);
+	// 有 inquiry 才会在点开时出「远征」按钮，不然玩家点开线人只看得到「杀死」
+	set("inquiry", ([ "远征" : (: call_other, __FILE__, "inquiry_yz" :) ]));
 	setup();
+}
+
+mixed inquiry_yz()
+{
+	return accept_ask(this_player(), "远征");
 }
 
 mixed accept_ask(object me, string topic)
@@ -34,7 +41,20 @@ mixed accept_ask(object me, string topic)
 		return 0;
 	if (! objectp(me) || ! userp(me)) return 0;
 	YZ_D->ask_done(me, this_object());
-	return "匪首今晚就在广场聚众，要动手去南大街，匪首今晚就在广场聚众。";
+	return "匪首手下有个副手，这两天在城门一带转悠；先把他截下，匪首就成了光杆。";
 }
 
 void unconcious() { }
+
+// 线人是来递话的：被人动手就缩成一团，把话说了，免得玩家以为要打死他
+int accept_fight(object who) { return 0; }
+int accept_hit(object who)
+{
+	if (objectp(who) && userp(who))
+	{
+		command("say 别动手别动手！要问就问「远征」的事（ask xianren about 远征）。");
+		YZ_D->ask_done(who, this_object());
+	}
+	return -1;
+}
+int accept_kill(object who) { return accept_hit(who); }

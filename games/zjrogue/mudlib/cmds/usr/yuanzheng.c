@@ -27,6 +27,9 @@ int menu(object me)
 	{
 		if (s["planning"])
 			str += "看悬赏榜:yuanzheng brief" ZJSEP;
+		else if (mapp(s["event"]))
+			// 遭遇的弹窗被关掉了也得能找回来，不然下一关一直不开
+			str += "路上遇到的事（先处理）:yuanzheng event" ZJSEP;
 		else
 			str += "继续远征:yuanzheng resume" ZJSEP;
 		if (stringp(goal = YZ_D->goal_room(me)) && (! environment(me) || base_name(environment(me)) != goal))
@@ -38,7 +41,8 @@ int menu(object me)
 		// 只在手上真有宝物时给「上交」，别的关卡点了只会得到一句「现在不需要」
 		if (s["stage"] >= 5)
 			str += "结算远征:yuanzheng settle" ZJSEP;
-		else if (present("treasure", me))
+		else if (present("treasure", me) && environment(me) &&
+			 base_name(environment(me)) == YZ_D->inn_room(me))
 			str += "上交宝物:yuanzheng submit" ZJSEP;
 		str += "放弃远征:yuanzheng abandon" ZJSEP;
 	}
@@ -80,7 +84,7 @@ int main(object me, string arg)
 	case "resume":	return YZ_D->resume(me);
 	case "brief":	return YZ_D->brief_menu(me), 1;
 	case "pause":	return YZ_D->pause(me);
-	case "event":	return notify_fail("请选择 1 或 2：yuanzheng event 1\n");
+	case "event":	return YZ_D->show_event(me);
 	case "life":	return YZ_D->debug_life(me, 1);
 	case "jump":	return notify_fail("用法：yuanzheng jump 1-" + "5。\n");
 	case "plan":	return notify_fail("请选择 1、2 或 3：yuanzheng plan 1\n");
