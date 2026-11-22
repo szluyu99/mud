@@ -286,7 +286,14 @@ async function zjrogueExtras(page) {
 
   // 二、夺宝：打死守卫拿宝物，回客店上交
   await send(page, 'goto /d/city/nandajie1'); await page.waitForTimeout(2500);
-  check('zjrogue: 守卫 drops a treasure', await cmd('kill shouwei', /摸出.*宝物/, 60000), await out());
+  // 守卫会喊帮手，但「倒下去」的只能是守卫本人：帮手被打倒不算过关，守卫也不该越喊越多
+  {
+    const t = await cmd('kill shouwei', /摸出.*宝物/, 90000);
+    const log = await text();
+    const helpers = (log.match(/狂喊「来人哪/g) || []).length;
+    check('zjrogue: 守卫 drops a treasure', t, await out());
+    check('zjrogue: 守卫喊来的帮手不会越喊越多', helpers <= 3, '来人哪 x' + helpers);
+  }
   await send(page, 'goto /d/city/kedian'); await page.waitForTimeout(2500);
   check('zjrogue: 宝物 submitted at 宝昌客栈', await cmd('yuanzheng submit', /二、夺宝 完成/, 20000), await out());
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);

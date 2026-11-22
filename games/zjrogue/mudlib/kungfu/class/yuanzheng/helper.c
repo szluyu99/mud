@@ -24,9 +24,9 @@ void setup_from_ally(string owner, int stage)
 	set("yz_ally", 1);
 	set("yz_owner", owner);
 	set("yz_stage", stage);
-	set("max_qi", 60 + stage * 20);
-	set("eff_qi", 60 + stage * 20);
-	set("qi", 60 + stage * 20);
+	set("max_qi", 40 + stage * 12);
+	set("eff_qi", 40 + stage * 12);
+	set("qi", 40 + stage * 12);
 	set("max_jing", 60 + stage * 10);
 	set("eff_jing", 60 + stage * 10);
 	set("jing", 60 + stage * 10);
@@ -34,7 +34,8 @@ void setup_from_ally(string owner, int stage)
 	set_skill("dodge", 0);
 	set_skill("parry", 0);
 	set_skill("force", 10 + stage * 8);
-	add_temp("apply/damage", stage * 2);
+	// 帮手是用来添乱的，不是来替玩家赢的：打人只有一成力
+	add_temp("apply/damage", -20);
 	add_temp("apply/defense", -10);
 	set("title", HIR "帮闲" NOR);
 }

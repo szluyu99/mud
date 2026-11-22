@@ -48,7 +48,7 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 
 	lvl = 5 + stage * 12;
 	// 局内给了流派底子之后，原来那点血一两下就没了；按关卡抬上来，一关大约四五下
-	qi = 110 + stage * 80 + (kind == "boss" ? 140 : 0) + (kind == "guard" ? 40 : 0);
+	qi = 110 + stage * 80 + (kind == "boss" ? 140 : 0) + (kind == "guard" ? 10 : 0);
 
 	set("str", 18 + stage * 2);
 	set("con", 18 + stage * 2);
@@ -166,12 +166,14 @@ int style_damage(string type, int damage, object who)
 // 副手（vice）：血掉到三成就掉头跑，跑掉了这一关得重来
 void guard_shout()
 {
-	object room, ob;
+	object room, ob, who;
 	object *allies;
 
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
 	if (! objectp(room = environment(this_object()))) return;
-	if (! objectp(query_temp("last_damage_from"))) return;
+	// 只招呼真动手的玩家：帮闲把自己人当仇家，会越喊越多，把场子搅烂
+	who = query_temp("last_damage_from");
+	if (! objectp(who) || ! userp(who)) return;
 	if (query_temp("yz_shout") && time() - query_temp("yz_shout") < 7) return;
 	set_temp("yz_shout", time());
 	// 一关最多喊两个帮手，人手也是有限的
@@ -182,7 +184,7 @@ void guard_shout()
 	if (! objectp(ob)) return;
 	ob->setup_from_ally(query("yz_owner"), query("yz_stage"));
 	ob->move(room);
-	ob->kill_ob(query_temp("last_damage_from"));
+	ob->kill_ob(who);
 }
 
 void vice_fled()
@@ -203,19 +205,22 @@ void vice_fled()
 
 void heart_beat()
 {
+	object who;
+
 	::heart_beat();
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
 	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
 		die(query_temp("last_damage_from"));
 	// 副手三成血开跑，但离倒下只差几拳的时候就不跑了，否则快到手的窗口一下全白费。
 	// 逃跑这条路得撞上两次才跑得掉（撞一次摔一跤、掉三成血），玩家至少有把手拦一拦。
-	if (query("yz_kind") == "vice" && query("qi") * 10 <= query("max_qi") * 3 && query("qi") * 20 > query("max_qi"))
+	who = query_temp("last_damage_from");
+	if (query("yz_kind") == "vice" && objectp(who) && query("qi") * 10 <= query("max_qi") * 3 && query("qi") * 20 > query("max_qi"))
 	{
-		if (! query_temp("yz_escape"))
+		if (! query_temp("yz_escape") && userp(who) && environment(who) == environment(this_object()))
 		{
 			set_temp("yz_escape", 1);
 			set("qi", query("qi") * 7 / 10);
-			message_vision(HIR "$N往巷口一钻，被$n一把揪了回来！\n" NOR, this_object(), query_temp("last_damage_from"));
+			message_vision(HIR "$N往巷口一钻，被$n一把揪了回来！\n" NOR, this_object(), who);
 		}
 		else
 			vice_fled();
