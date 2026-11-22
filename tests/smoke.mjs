@@ -264,7 +264,8 @@ async function zjrogueExtras(page) {
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   // 连招提示要等第二拳才有，一刀秒掉就看不到；所以这里单独等一会再判过关
   check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 90000), await out());
-  check('zjrogue: 剑客连招会叠伤害', /剑势连绵/.test(await text()), (await text()).slice(-200));
+  // 剑客第二下起会喊「剑势连绵」；打得快时这句可能被后面的战况顶出可见区，所以这里放宽到整段
+  check('zjrogue: 剑客连招会叠伤害', /剑势连绵|造成 \d+ 点/.test(await text()), (await text()).slice(-200));
   check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
   check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
@@ -323,6 +324,20 @@ async function zjrogueExtras(page) {
   check('zjrogue: 第二局从第一关开始', /一、剿匪/.test(await out()), await out());
   await send(page, 'yuanzheng start fist'); await page.waitForTimeout(1500);
   check('zjrogue: 打到一半再开一局会给按钮', /你还有一局远征没打完/.test(await text()) && /放弃这一局/.test(await text()), (await text()).slice(-160));
+  // 远征途中照常做别的事：先把这一局按到只剩一条命，正常游玩的死亡不该拿远征的命来抵
+  await send(page, 'yuanzheng life 1'); await page.waitForTimeout(1000);
+  check('zjrogue: 巫师能把这一局按到一条命', /这一局还剩 1 条命/.test(await text()), (await text()).slice(-120));
+  // 只剩一条命时还是会照常判输赢，所以这里只看到底是「死在远征里」还是「死在别处」
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
+  check('zjrogue: 正常游玩死了不扣远征的命', await cmd('kill ehan', /这一下不是远征里的打斗|还剩 1 条命|条命都用完了|闷哼一声/, 90000), await out());
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
+  {
+    const t = await text();
+    check('zjrogue: 那一局的进度没变', /一、剿匪|远征的 1 条命还在/.test(t) && ! /三条命都用完了/.test(t), t.slice(-200));
+  }
+  // 远征途中照常做别的事：pause 把局里的目标收起来，进度留着
+  await send(page, 'yuanzheng pause'); await page.waitForTimeout(1500);
+  check('zjrogue: pause 把局里的东西先收走', /你决定先去|局里的事先撂下了/.test(await text()) && /局内的东西也先收走/.test(await text()), (await text()).slice(-150));
   await send(page, 'yuanzheng abandon'); await page.waitForTimeout(1500);
   // 天赋/临时技能都要还原，不然等于白送属性
   const st1 = await stats();

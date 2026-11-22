@@ -40,6 +40,8 @@ int menu(object me)
 		str += "放弃远征:yuanzheng abandon" ZJSEP;
 	}
 	str += "远征商店:yuanzheng shop" ZJSEP;
+	if (s)
+		str += "离开江湖（局里的目标先收起来）:yuanzheng pause" ZJSEP;
 	write(str + "\n");
 	return 1;
 }
@@ -58,6 +60,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "choose %d", n) == 1) return YZ_D->choose(me, n);
 	if (sscanf(arg, "event %d", n) == 1) return YZ_D->resolve_event(me, n);
 	if (sscanf(arg, "plan %d", n) == 1) return YZ_D->plan(me, n);
+	if (sscanf(arg, "life %d", n) == 1) return YZ_D->debug_life(me, n);
 	if (sscanf(arg, "stall %d", n) == 1) return YZ_D->buy_stall(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
@@ -72,7 +75,9 @@ int main(object me, string arg)
 	case "debugwin":	return YZ_D->debug_win(me);
 	case "resume":	return YZ_D->resume(me);
 	case "brief":	return YZ_D->brief_menu(me), 1;
+	case "pause":	return YZ_D->pause(me);
 	case "event":	return notify_fail("请选择 1 或 2：yuanzheng event 1\n");
+	case "life":	return YZ_D->debug_life(me, 1);
 	case "plan":	return notify_fail("请选择 1、2 或 3：yuanzheng plan 1\n");
 	case "stall":	return YZ_D->stall(me);
 	case "where":	return YZ_D->where(me);
@@ -88,6 +93,8 @@ int help(object me)
 	      "每过一关得到 1 点属性点并三选一天赋（天赋按流派给）；三条命，倒下回客店；\n"
 	      "每局的城是随机挑的（扬州、苏州、杭州、泉州），五关都在那一带；\n"
 	      "开局先看悬赏榜，挑一条路（yuanzheng plan 1|2|3）决定先做哪一桩；\n"
-	      "五关全过后 yuanzheng settle 结算远征声望，声望可以在 yuanzheng shop 里换常驻特权。\n");
+	      "五关全过后 yuanzheng settle 结算远征声望，声望可以在 yuanzheng shop 里换常驻特权。\n"
+	      "远征途中可以照常做别的事（yuanzheng pause 把局里的目标先收起来）；\n"
+	      "身上带着局内的加成和借来的兵器，status 里列得出来，结算时一块收回。\n");
 	return 1;
 }

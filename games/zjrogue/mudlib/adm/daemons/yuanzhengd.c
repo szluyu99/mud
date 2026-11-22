@@ -44,14 +44,17 @@ mapping cities = ([
 mapping styles = ([
 	"sword": ([ "name" : "剑客",
 		    "desc" : "长剑在手，招架最稳，出手快，靠剑法连招取势",
-		    "weapon" : "/clone/weapon/changjian",
+		    "weapon" : "/clone/weapon/changjian", "weapon_type" : "sword",
+		    "main" : "sword",
 		    "skills" : ([ "sword" : 70, "parry" : 50, "dodge" : 40, "force" : 30 ]) ]),
 	"fist" : ([ "name" : "拳师",
 		    "desc" : "空手对敌，身法最灵，贴身短打又快又狠",
+		    "main" : "unarmed",
 		    "skills" : ([ "unarmed" : 80, "cuff" : 70, "dodge" : 60, "parry" : 40, "force" : 30 ]) ]),
 	"blade": ([ "name" : "刀客",
 		    "desc" : "单刀走刚猛一路，血厚甲硬，一刀是一刀",
-		    "weapon" : "/clone/weapon/dadao",
+		    "weapon" : "/clone/weapon/dadao", "weapon_type" : "blade",
+		    "main" : "blade",
 		    "skills" : ([ "blade" : 70, "parry" : 40, "dodge" : 30, "force" : 40 ]) ])
 ]);
 
@@ -175,7 +178,7 @@ int buy(object me, int n)
 	mapping p;
 	int cost;
 
-	if (n < 1 || n > sizeof(perks)) return notify_fail("没有这件特权。\n");
+	if (! intp(n) || n < 1 || n > sizeof(perks)) return notify_fail("没有这件特权。\n");
 	p = perks[n - 1];
 	if (has_perk(me, p["id"])) return notify_fail("你已经拥有了「" + p["name"] + "」。\n");
 	if (stringp(p["need"]) && ! has_perk(me, p["need"]))
@@ -313,6 +316,20 @@ void end_run(object me)
 			destruct(ob);
 			tell_object(me, "（局内借来的兵器已经还回去了）\n");
 		}
+	// 开局替下来的真兵器，这时装回去；真兵器在局中丢了的就当没了
+	foreach (object wdb in (arrayp(s["set_aside"]) ? s["set_aside"] : ({})))
+	{
+		if (! objectp(wdb)) continue;
+		if (objectp(environment(wdb)) && environment(wdb) != me) continue;
+		if (environment(wdb) != me) wdb->move(me, 1);
+		if (objectp(environment(wdb)) && ! wdb->query("equipped")) wdb->wield();
+		tell_object(me, "（" + wdb->name() + "又回到手上）\n");
+	}
+	// 局里一直在打，踏空的临时计数会留下，踏出江湖就清掉
+	me->delete_temp("last_applied");
+	me->delete_temp("last_skill");
+	// 局内加成是改在真身身上的，这一趟里正常练功/打怪都算在远征账上，得说清楚
+	tell_object(me, HIY "（远征收尾：局内的天赋加成、借来的兵器都收回了；这一趟里练的功、打的东西都留在身上，按正常游戏算。）" NOR "\n");
 	if (! undefinedp(s["wimpy"])) me->set("env/wimpy", s["wimpy"]);
 	if (mapp(s["skills"]))
 		foreach (string sk, int old in s["skills"]) me->set_skill(sk, old);
@@ -707,9 +724,13 @@ void enemy_died(object killer, object enemy)
 
 	if (mapp(def = cur_stage(me)) && def["type"] == "item")
 	{
-		object t = new(YZ_TREASURE);
-		t->set("yz_stage", s["stage"]);
-		t->move(me, 1);
+		// 身上已经有一件（上一件没交、或者重登过了）就别再摸一件，免得交完还剩一件
+		if (! present("treasure", me))
+		{
+			object t = new(YZ_TREASURE);
+			t->set("yz_stage", s["stage"]);
+			t->move(me, 1);
+		}
 		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
 			room_name(city_of(me)["inn"]) + "上交（yuanzheng submit）。\n" NOR);
 		return;
@@ -749,11 +770,78 @@ int submit(object me)
 
 // ---------- 死亡 ----------
 
-int on_die(object me)
+// 只有巫师用：把这一局的命改到 1，用来试「正常游玩死掉」这条分支
+int debug_life(object me, int n)
 {
 	mapping s = state(me);
 
+	if (! wiz_level(me)) return 0;
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	// 参数是用命令传进来的，没给就是 0（谁传了 "x" 这种字符串，这里会直接报错）
+	if (! intp(n) || n < 1) n = 1;
+	s["life"] = n;
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, "（这一局还剩 " + n + " 条命）\n");
+	return 1;
+}
+
+// 离开江湖：把局里的目标和借来/带出来的东西先挪开，让人放心去做别的事
+// 这一局的进度不丢，回来 yuanzheng resume 就在原地接着打
+int pause(object me)
+{
+	mapping s = state(me), *kill = ({});
+	object ob;
+	int n = 0;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	foreach (ob in children(YZ_ENEMY))
+		if (ob && ob->query("yz_owner") == me->query("id")) kill += ({ ob });
+	foreach (ob in children(YZ_INFO))
+		if (ob && ob->query("yz_owner") == me->query("id")) kill += ({ ob });
+	if (sizeof(kill)) call_out("purge", 1, kill);
+	foreach (ob in all_inventory(me))
+	{
+		if (! ob->query("yz_weapon") && ! ob->query("yz_start_spoil")) continue;
+		n++;
+		destruct(ob);
+	}
+	tell_object(me, "你把局里的事先撂下了：目标暂时收起" + (n ? "，局内的东西也先收走 " + n + " 件" : "") +
+		"。这一局的进度还在，想接着打就打 yuanzheng resume。\n");
+	return 1;
+}
+
+// 这一下算谁的：正在打局里的目标或跟人对打算远征，走在路上空着手死算正常游玩
+int in_battle(object me)
+{
+	object ob, env = environment(me);
+
+	if (! objectp(env)) return 0;
+	foreach (ob in all_inventory(env))
+	{
+		if (! ob->is_character() || ob == me) continue;
+		if (ob->query("yz_owner") == me->query("id")) return 1;
+		if (! userp(ob) && ob->is_fighting(me)) return 1;
+	}
+	return 0;
+}
+
+int on_die(object me)
+{
+	mapping s = state(me);
+	int own;
+
 	if (! s) return 0;
+	// 正在正常游玩（身边没有在打的人和局里的目标）时死了，不该拿远征的命来抵
+	own = in_battle(me);
+	// 只剩最后一条命时不再豁免：一条命都拿来兜底就等于没有终点
+	if (s["life"] > 1 && ! own)
+	{
+		tell_object(me, HIY "（这一下不是远征里的打斗，远征的 " + s["life"] +
+			" 条命还在。接着打就打 yuanzheng resume。）" NOR "\n");
+		// 让原版的死亡流程照常走：该掉的东西、该回的地点都由它自己处理
+		return 0;
+	}
 	if (s["charm"] > 0)
 	{
 		s["charm"] -= 1;
@@ -787,7 +875,9 @@ int on_die(object me)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
-	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回客店。\n" NOR);
+	// 倒下算这一关没打成：局里的目标撤掉，下一关重新来过（免得旧目标留在原地打不了又挡路）
+	clean_world(me);
+	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回客店。这一关得重来。\n" NOR);
 	return 1;
 }
 
@@ -805,7 +895,8 @@ string status(object me)
 			me->query("yuanzheng/prestige"));
 	if (s["planning"])
 		return brief_text(me) + "（先挑一条路：yuanzheng plan 1|2|3）\n生命：" +
-			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　铜钱：" + (s["coin"] || 0);
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　铜钱：" + (s["coin"] || 0) +
+			"\n" + gear(me);
 	if (mapp(s["event"]))
 	{
 		mapping *pool = event_pool();
@@ -820,7 +911,41 @@ string status(object me)
 		def["title"], def["hint"], city_of(me)["name"], room_name(stage_room(me, def)),
 		s["life"], s["max_life"] || MAX_LIFE, s["points"], s["coin"] || 0,
 		sizeof(s["talents"]) ? implode(s["talents"], "、") : "无",
-		me->query("yuanzheng/prestige"));
+		me->query("yuanzheng/prestige")) + "\n" + gear(me);
+}
+
+// 这一趟身上带着什么、还回去什么：让人自己看清哪些是局内的
+string gear(object me)
+{
+	mapping s = state(me);
+	string str = "身上：";
+	int n = 0;
+
+	if (! s) return "";
+	foreach (object ob in all_inventory(me))
+	{
+		if (ob->query("yz_weapon"))
+		{
+			str += "借来的" + ob->name() + "　";
+			n++;
+		}
+		else if (ob->query("yz_start_spoil"))
+		{
+			str += "自带战利品 " + ob->name() + "　";
+			n++;
+		}
+		else if (member_array(ob, arrayp(s["set_aside"]) ? s["set_aside"] : ({})) >= 0)
+		{
+			str += "收着的" + ob->name() + "　";
+			n++;
+		}
+	}
+	if (! n) str += "（没有局内的东西）";
+	if (arrayp(s["set_aside"]) && sizeof(s["set_aside"]))
+		str += "\n收着的真兵器：结算或放弃时自己装回去。";
+	else
+		str += "\n";
+	return str;
 }
 
 // 局内摊位：铜钱在关卡里赚，只能在本局花，结算后清零
@@ -890,7 +1015,8 @@ int buy_stall(object me, int n)
 	string id;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
-	if (! arrayp(s["stall"]) || n < 1 || n > sizeof(s["stall"]))
+	if (s["planning"]) return notify_fail("先在悬赏榜上挑一条路（yuanzheng plan 1|2|3），再逛摊子。\n");
+	if (! arrayp(s["stall"]) || ! intp(n) || n < 1 || n > sizeof(s["stall"]))
 		return notify_fail("摊子上没有这一件。\n");
 	id = s["stall"][n - 1];
 	if (! mapp(it = stall_item(id))) return notify_fail("摊子上没有这一件。\n");
@@ -1051,6 +1177,18 @@ int start(object me, string style, string city)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
+	// 借来的兵器要用本流派的功夫：先把手上那件真的收起来，免得打起来用的是别的兵器功夫
+	me->delete_temp("last_skill");
+	s["set_aside"] = ({});
+	if (stringp(st["weapon_type"]))
+		foreach (object wdb in all_inventory(me))
+		{
+			if (! wdb->query("equipped")) continue;
+			if (! (stringp(wdb->query("skill_type")) && wdb->query("skill_type") == st["weapon_type"])) continue;
+			wdb->unequip();
+			s["set_aside"] += ({ wdb });
+			tell_object(me, "（" + wdb->name() + "先收进行囊，这趟就用借来的兵器。）\n");
+		}
 	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
 	if (has_perk(me, "spoil")) give_start_spoil(me, perks_of(me, "spoil"));
 	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
