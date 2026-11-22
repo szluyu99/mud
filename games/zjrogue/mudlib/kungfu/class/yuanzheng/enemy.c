@@ -4,6 +4,7 @@
 inherit NPC;
 
 #define YZ_D "/adm/daemons/yuanzhengd"
+#define YZ_ALLY "/kungfu/class/yuanzheng/helper"
 
 void create()
 {
@@ -47,7 +48,7 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 
 	lvl = 5 + stage * 12;
 	// 局内给了流派底子之后，原来那点血一两下就没了；按关卡抬上来，一关大约四五下
-	qi = 110 + stage * 80 + (kind == "boss" ? 140 : 0);
+	qi = 110 + stage * 80 + (kind == "boss" ? 140 : 0) + (kind == "guard" ? 40 : 0);
 
 	set("str", 18 + stage * 2);
 	set("con", 18 + stage * 2);
@@ -159,12 +160,57 @@ int style_damage(string type, int damage, object who)
 	return damage;
 }
 
+// ---------- 三种敌人各有各的脾气 ----------
+// 恶汉（thug）：纯数值，入门关
+// 守卫（guard）：每七秒喊一嗓子，招呼一个帮手一起上
+// 副手（vice）：血掉到三成就掉头跑，跑掉了这一关得重来
+void guard_shout()
+{
+	object room, ob;
+	object *allies;
+
+	if (! objectp(this_object()) || query_temp("yz_dead")) return;
+	if (! objectp(room = environment(this_object()))) return;
+	if (! objectp(query_temp("last_damage_from"))) return;
+	if (query_temp("yz_shout") && time() - query_temp("yz_shout") < 7) return;
+	set_temp("yz_shout", time());
+	// 一关最多喊两个帮手，人手也是有限的
+	allies = filter_array(all_inventory(room), (: objectp($1) && $1->query("yz_ally") :));
+	if (sizeof(allies) >= 2) return;
+	message_vision(HIR "$N扯着嗓子喊了起来：「来人哪！有人要抢东西！」\n" NOR, this_object());
+	ob = new(YZ_ALLY);
+	if (! objectp(ob)) return;
+	ob->setup_from_ally(query("yz_owner"), query("yz_stage"));
+	ob->move(room);
+	ob->kill_ob(query_temp("last_damage_from"));
+}
+
+void vice_fled()
+{
+	object room, owner = find_owner();
+
+	if (! objectp(this_object()) || query_temp("yz_dead")) return;
+	room = environment(this_object());
+	set_temp("yz_dead", 1);
+	set("qi", query("max_qi"));
+	set("eff_qi", query("max_qi"));
+	if (objectp(room))
+		tell_room(room, HIY + query("name") + HIY "见势不妙，一转身钻进巷子跑了。\n" NOR, ({ this_object() }));
+	if (objectp(owner))
+		YZ_D->enemy_fled(owner, this_object(), room ? base_name(room) : "");
+	call_out("vanish", 1);
+}
+
 void heart_beat()
 {
 	::heart_beat();
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
 	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
 		die(query_temp("last_damage_from"));
+	if (query("yz_kind") == "vice" && query("qi") * 10 <= query("max_qi") * 3)
+		vice_fled();
+	if (query("yz_kind") == "guard" && objectp(query_temp("last_damage_from")))
+		guard_shout();
 }
 
 object find_owner()

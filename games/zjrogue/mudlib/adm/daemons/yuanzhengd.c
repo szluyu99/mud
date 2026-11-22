@@ -11,14 +11,20 @@
 #define YZ_SPOIL_BLADE "/clone/misc/yz_spoil_blade"
 #define YZ_SPOIL_ARMOR "/clone/misc/yz_spoil_armor"
 
+// 前三桩各有各的好处，挑哪桩先做就真的一回事：
+//   剿匪 up=attack（下一关之前攻击 +10）  夺宝 coin=10（这关多捡 10 枚）  寻访 point=1（这关多 1 点天赋）
 mapping *stages = ({
 	([ "type":"kill", "title":"一、剿匪", "key":"kill", "who":"恶汉", "eid":"ehan",
+	   "up":"attack", "gain":"打完手上更利索，下一关之前攻击 +10",
 	   "hint":"杀掉在那里闹事的恶汉（kill ehan）" ]),
 	([ "type":"item", "title":"二、夺宝", "key":"item", "who":"守卫", "eid":"shouwei",
+	   "coin":10, "gain":"守卫身上有货，这关多捡 10 枚铜钱",
 	   "hint":"杀掉守卫，拿到他身上的宝物，再回客店上交（yuanzheng submit）" ]),
 	([ "type":"ask", "title":"三、寻访", "key":"ask", "who":"线人", "eid":"xianren",
+	   "point":1, "gain":"线人指条路，这关多 1 点天赋",
 	   "hint":"找到线人，向他打听远征（ask xianren about 远征）" ]),
 	([ "type":"kill", "title":"四、截杀", "key":"street", "who":"副手", "eid":"fushou",
+	   "up":"damage", "gain":"副手身上带着药，这关之后出手更重 +8",
 	   "hint":"截杀匪首的副手（kill fushou）" ]),
 	([ "type":"boss", "title":"五、终局", "key":"boss", "who":"匪首", "eid":"feishou",
 	   "hint":"迎战匪首，赢下这一局（kill feishou）", "boss":1 ])
@@ -450,7 +456,9 @@ void spawn(object me, int stage)
 	}
 
 	ob = new(YZ_ENEMY);
-	ob->setup_from(me, stage, def["boss"] ? "boss" : "kill", def["who"], def["eid"]);
+	ob->setup_from(me, stage, def["type"] == "boss" ? "boss" :
+		(def["type"] == "item" ? "guard" : (def["key"] == "street" ? "vice" : "thug")),
+		def["who"], def["eid"]);
 	ob->set("yz_style", style_of(me));
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。\n" NOR, ob);
@@ -483,8 +491,8 @@ string brief_text(object me)
 	for (i = 0; i < 3; i++)
 	{
 		k = real_stage(s, i);
-		str += sprintf("  %s　%s·%s\n", stages[k]["title"], c["name"],
-			room_name(stage_room(me, stages[k])));
+		str += sprintf("  %s　%s·%s　%s\n", stages[k]["title"], c["name"],
+			room_name(stage_room(me, stages[k])), stages[k]["gain"] || "");
 	}
 	if (has_perk(me, "scout"))
 		for (i = 3; i < sizeof(stages); i++)
@@ -694,15 +702,25 @@ void complete_stage(object me)
 
 	clean_world(me, s["stage"]);
 	s["stage"] += 1;
-	s["points"] += 1;
+	s["points"] += 1 + (int)def["point"];
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 
-	earned = 6 + (s["stage"] - 1) * 4 + (has_perk(me, "coin") ? 4 : 0);
+	earned = 6 + (s["stage"] - 1) * 4 + (has_perk(me, "coin") ? 4 : 0) + (int)def["coin"];
 	s["coin"] = (s["coin"] || 0) + earned;
 	roll_stall(me, s);
-	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 1 点属性点，捡到 " +
-		earned + " 枚铜钱。\n" NOR);
+	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 " + (1 + (int)def["point"]) +
+		" 点属性点，捡到 " + earned + " 枚铜钱。\n" NOR);
+	// 剿匪/截杀给的是一小段时间的攻击、伤害加成，换关就淡掉
+	if (stringp(def["up"]))
+	{
+		int add = def["up"] == "attack" ? 10 : 8;
+		s["buff"]["apply/" + def["up"]] = (s["buff"]["apply/" + def["up"]] || 0) + add;
+		me->add_temp("apply/" + def["up"], add);
+		tell_object(me, HIC "（" + def["gain"] + "）\n" NOR);
+	}
+	else if (stringp(def["gain"]))
+		tell_object(me, HIC "（" + def["gain"] + "）\n" NOR);
 	if (s["stage"] >= sizeof(stages))
 	{
 		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。\n" NOR);
@@ -712,6 +730,33 @@ void complete_stage(object me)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	event_menu(me);
+}
+
+// 副手跑了：这一关白打，目标撤掉，打法重新来一遍
+void enemy_fled(object me, object enemy, string room)
+{
+	mapping s, def;
+
+	if (! objectp(me) || ! (s = state(me))) return;
+	if (! mapp(def = cur_stage(me))) return;
+	if ((int)enemy->query("yz_stage") != s["stage"]) return;
+	if (enemy->query("yz_owner") != me->query("id")) return;
+	tell_object(me, HIR "【远征】" + def["title"] + "：人跑了，这一关得重来。" NOR "\n");
+	tell_object(me, "  回去再堵他一回（goto " + stage_room(me, def) + "），路上先喘口气。\n");
+	clean_world(me, s["stage"]);
+	call_out("respawn", 6, me, s["stage"]);
+}
+
+void respawn(object me, int stage)
+{
+	mapping s, def;
+
+	if (! objectp(me) || ! (s = state(me))) return;
+	if (s["stage"] != stage) return;
+	if (! mapp(def = def_at(s, stage))) return;
+	if (def["type"] == "ask") return;
+	if (find_my_enemy(me, stage)) return;
+	spawn(me, stage);
 }
 
 // 敌人被杀死

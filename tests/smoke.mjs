@@ -254,7 +254,12 @@ async function zjrogueExtras(page) {
   check('zjrogue: 剑客带着长剑开局', /长剑/.test(await out()), await out());
   check('zjrogue: 开局随机挑一座城', /这一趟去(扬州|苏州|杭州|泉州)/.test(await text()), (await text()).slice(-120));
   // 开局先出一张悬赏榜，三桩活儿自己挑先做哪桩
-  check('zjrogue: 开局先看悬赏榜', /悬赏榜/.test(await text()) && /先去哪一桩/.test(await text()), (await text()).slice(-200));
+  {
+    const t = await text();
+    check('zjrogue: 开局先看悬赏榜', /悬赏榜/.test(t) && /先去哪一桩/.test(t), t.slice(-200));
+    // 三桩活儿各有各的好处，榜单上就得写出来，不然选路等于没选
+    check('zjrogue: 悬赏榜上写着各桩的好处', /攻击 \+10/.test(t) && /多捡 10 枚/.test(t) && /多 1 点天赋/.test(t), t.slice(-320));
+  }
   await send(page, 'yuanzheng plan 1'); await page.waitForTimeout(2000);
   check('zjrogue: 挑了先做剿匪', /你决定先去一、剿匪/.test(await text()), (await text()).slice(-120));
   check('zjrogue: 目标地点会给出路径', /地点：.*（goto \/d\//.test(await text()), (await text()).slice(-160));
