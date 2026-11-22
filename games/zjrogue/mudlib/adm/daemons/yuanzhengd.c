@@ -236,6 +236,11 @@ mapping def_at(mapping s, int pos)
 	return (i >= 0 && i < sizeof(stages)) ? stages[i] : 0;
 }
 
+void push_bar(object me)
+{
+	if (objectp(me) && state(me)) tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
 // 玩家一到关卡地点就把目标放出来，避免目标在空房间里被别人打掉
 void heart_beat()
 {
@@ -246,6 +251,14 @@ void heart_beat()
 	{
 		if (! objectp(me) || ! me->query("born")) continue;
 		if (! mapp(s = me->query("yuanzheng/run")) && ! mapp(s = me->query_temp("yuanzheng"))) continue;
+		// 刷新页面重新登录后：马上补回局内加成和倒下的接管（原来要等玩家点一下远征才补），顶栏也重新挂上
+		if (! me->query_temp("yz_bar"))
+		{
+			me->set_temp("yz_bar", 1);
+			state(me);
+			// 刚连上时网页还在「正在加载世界」，这时推的简讯会被丢掉，等几秒再推
+			call_out("push_bar", 4, me);
+		}
 		if (s["stage"] >= sizeof(stages)) continue;
 		if (! mapp(def = def_at(s, s["stage"]))) continue;
 		if (! objectp(env = environment(me))) continue;
@@ -312,6 +325,8 @@ void save_run(object me)
 
 	if (! s) me->delete("yuanzheng/run");
 	else me->set("yuanzheng/run", s);
+	// 进度一变就写盘：网页端只在有输入后 2 秒存一次，打完一关不再按键就刷新，这一关会白打
+	if (userp(me) && me->query("born")) me->save();
 }
 
 void apply_talent(object me, mapping t)

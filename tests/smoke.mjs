@@ -368,6 +368,12 @@ async function zjrogueExtras(page) {
     const t = await text();
     check('zjrogue: 那一局的进度没变', /一、剿匪|远征的 1 条命还在/.test(t) && ! /三条命都用完了/.test(t), t.slice(-200));
   }
+  // 刷新页面：进度要已经写盘，重新进来顶栏直接挂着当前关卡（不用先点一下远征）
+  await page.waitForTimeout(2500);
+  await page.reload({ waitUntil: 'load' });
+  await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
+  check('zjrogue: 刷新页面后顶栏接着显示远征进度', await until(page, () => /远征：.*命/.test(document.getElementById('yzbar')?.textContent || ''), 15000),
+    await page.evaluate(() => document.getElementById('yzbar')?.textContent || '(无顶栏)'));
   // 远征途中照常做别的事：pause 把局里的目标收起来，进度留着
   await send(page, 'yuanzheng pause'); await page.waitForTimeout(1500);
   check('zjrogue: pause 把局里的东西先收走', /你决定先去|局里的事先撂下了/.test(await text()) && /局内的东西也先收走/.test(await text()), (await text()).slice(-150));
