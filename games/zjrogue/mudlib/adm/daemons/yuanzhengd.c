@@ -549,8 +549,14 @@ void begin_stage(object me)
 	tell_object(me, HIR "【远征】" NOR + def["title"] + "：" + def["hint"] + "\n");
 	tell_object(me, "  地点：" + city_of(me)["name"] + "·" + room_name(stage_room(me, def)) +
 		"（goto " + stage_room(me, def) + "）\n");
+	// 重登回来的人，第一件事就是把「身上还带着局里的东西」摆出来给他看
+	foreach (object it in all_inventory(me))
+		if (it->query("yz_weapon") || it->query("yz_start_spoil"))
+			it->set("no_drop", 1);
 	if (objectp(env = environment(me)) && base_name(env) == stage_room(me, def))
 		tell_object(me, HIC "目标就在此地。\n" NOR);
+	else
+		tell_object(me, "（走不过去就 yuanzheng pause 收起来，回头 yuanzheng resume 接着打。）\n");
 }
 
 void talent_menu(object me)
@@ -877,7 +883,10 @@ int on_die(object me)
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
 	// 倒下算这一关没打成：局里的目标撤掉，下一关重新来过（免得旧目标留在原地打不了又挡路）
 	clean_world(me);
-	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回客店。这一关得重来。\n" NOR);
+	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回客店。这一关得重来。" NOR);
+	if (s["life"] <= 1)
+		tell_object(me, HIR "（再倒下一次，这一局就结束了。）" NOR);
+	tell_object(me, "\n");
 	return 1;
 }
 
@@ -1087,6 +1096,7 @@ void give_weapon(object me, string file)
 	if (! ob) return;
 	ob->set("yz_weapon", 1);
 	ob->set("no_drop", 1);
+	ob->set("no_store", 1);
 	if (! ob->move(me))
 	{
 		destruct(ob);
@@ -1191,6 +1201,8 @@ int start(object me, string style, string city)
 		}
 	if (stringp(st["weapon"])) give_weapon(me, st["weapon"]);
 	if (has_perk(me, "spoil")) give_start_spoil(me, perks_of(me, "spoil"));
+	if (s["life"] <= 1)
+		tell_object(me, HIY "（只剩最后一条命：这一趟里倒下就结束了，路上别硬碰硬。）" NOR "\n");
 	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
 		st["desc"] + "\n" +
 		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n" +

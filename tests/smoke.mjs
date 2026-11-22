@@ -327,6 +327,10 @@ async function zjrogueExtras(page) {
   // 远征途中照常做别的事：先把这一局按到只剩一条命，正常游玩的死亡不该拿远征的命来抵
   await send(page, 'yuanzheng life 1'); await page.waitForTimeout(1000);
   check('zjrogue: 巫师能把这一局按到一条命', /这一局还剩 1 条命/.test(await text()), (await text()).slice(-120));
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1000);
+  check('zjrogue: 只剩一条命时 status 会提醒', /1\/\d/.test(await text()) || /1 条命/.test(await text()), (await text()).slice(-160));
+  // 局里的东西不能丢：宝物 no_drop，丢不出去就不会被扫街的收走
+  check('zjrogue: 局内东西挂着不可丢弃', /局内的东西|借来的/.test(await text()), (await text()).slice(-100));
   // 只剩一条命时还是会照常判输赢，所以这里只看到底是「死在远征里」还是「死在别处」
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: 正常游玩死了不扣远征的命', await cmd('kill ehan', /这一下不是远征里的打斗|还剩 1 条命|条命都用完了|闷哼一声/, 90000), await out());
