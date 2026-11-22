@@ -22,7 +22,7 @@ mapping *stages = ({
 	   "hint":"杀掉在那里闹事的恶汉（kill ehan）" ]),
 	([ "type":"item", "title":"二、夺宝", "key":"item", "who":"守卫", "eid":"shouwei",
 	   "coin":10, "gain":"守卫身上有货，这关多捡 10 枚铜钱",
-	   "hint":"杀掉守卫，拿到他身上的宝物，再回客店上交（yuanzheng submit）" ]),
+	   "hint":"杀掉守卫，拿到他身上的宝物，再带回本城落脚处上交（yuanzheng submit）" ]),
 	([ "type":"ask", "title":"三、寻访", "key":"ask", "who":"线人", "eid":"xianren",
 	   "point":1, "gain":"线人指条路，这关多 1 点天赋",
 	   "hint":"找到线人，向他打听远征（ask xianren about 远征）" ]),
@@ -45,8 +45,9 @@ mapping cities = ([
 	               "street":"/d/hangzhou/huagang", "ask":"/d/hangzhou/jingcisi",
 	               "boss":"/d/hangzhou/duanqiao", "inn":"/d/hangzhou/kedian" ]),
 	"quanzhou": ([ "name":"泉州", "kill":"/d/quanzhou/zhongxin", "item":"/d/quanzhou/nanmen",
-	               "street":"/d/quanzhou/beimen", "ask":"/d/quanzhou/chating",
-	               "boss":"/d/quanzhou/zhongxin", "inn":"/d/quanzhou/chating" ])
+	               "street":"/d/quanzhou/beimen", "ask":"/d/quanzhou/majiu1",
+	               // 茶亭其实在嘉兴地界（得 fly jx），倒下被送过去、上交还要跨城，改用城里的海港和马厩
+	               "boss":"/d/quanzhou/zhongxin", "inn":"/d/quanzhou/haigang" ])
 ]);
 
 // ---- 开局构筑：三种流派，各有一套初始功夫与 15 个专属天赋 ----
@@ -1037,7 +1038,7 @@ int on_die(object me)
 	me->set_override("die", (: call_other, __FILE__, "on_die" :));
 	// 倒下算这一关没打成：局里的目标撤掉，下一关重新来过（免得旧目标留在原地打不了又挡路）
 	clean_world(me);
-	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回客店。这一关得重来。" NOR);
+	tell_object(me, HIR "你在远征中倒下了！还剩 " + s["life"] + " 条命，已被送回" + city_of(me)["name"] + "·" + room_name(city_of(me)["inn"]) + "。这一关得重来。" NOR);
 	if (s["life"] <= 1)
 		tell_object(me, HIR "（再倒下一次，这一局就结束了。）" NOR);
 	tell_object(me, "\n");
