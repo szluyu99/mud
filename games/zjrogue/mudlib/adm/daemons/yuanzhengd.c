@@ -236,10 +236,17 @@ mapping def_at(mapping s, int pos)
 	return (i >= 0 && i < sizeof(stages)) ? stages[i] : 0;
 }
 
+int tier_of(object me);
+string tier_name(int t);
+
 void push_hint(object me)
 {
-	if (objectp(me) && ! state(me) && ! me->query("yuanzheng/runs"))
+	if (! objectp(me) || state(me)) return;
+	// 打过的人结算后顶栏原来直接收起，再开一局又得去「系统」菜单里找；留一条入口
+	if (! me->query("yuanzheng/runs"))
 		tell_object(me, "YZ#江湖远征：点这里开一局（五关，三四分钟一局）\n");
+	else
+		tell_object(me, "YZ#江湖远征：再来一局（难度：" + tier_name(tier_of(me)) + "）\n");
 }
 
 void push_bar(object me)
@@ -259,7 +266,7 @@ void heart_beat()
 		if (! mapp(s = me->query("yuanzheng/run")) && ! mapp(s = me->query_temp("yuanzheng")))
 		{
 			// 还没打过远征的新人：入口原来藏在「系统」菜单里，几乎找不到。挂一条顶栏提示，点了就是远征菜单
-			if (! me->query("yuanzheng/runs") && ! me->query_temp("yz_hint"))
+			if (! me->query_temp("yz_hint"))
 			{
 				me->set_temp("yz_hint", 1);
 				call_out("push_hint", 4, me);
@@ -309,7 +316,7 @@ string status_line(object me)
 	if (! s) return "";
 	if (! mapp(def = cur_stage(me)))
 		return "远征：五关都过了，可以结算（yuanzheng）";
-	return "远征：" + def["title"] + "　命 " + s["life"] + "/" + s["max_life"] +
+	return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：" + def["title"] + "　命 " + s["life"] + "/" + s["max_life"] +
 		"　钱 " + (s["coin"] || 0);
 }
 
@@ -404,6 +411,8 @@ void end_run(object me)
 	me->delete("yuanzheng/run");
 	// 空的简讯让界面把顶栏收掉，不然结算后还挂着「五、终局」
 	tell_object(me, "YZ#\n");
+	// 顶栏换成「再来一局」入口，不然打完一局又得去「系统」菜单里找
+	call_out("push_hint", 2, me);
 	// 帮手是这一局喊来的，收尾就散，别让它们在城里跟着玩家找人打
 	foreach (object ob in children(YZ_ALLY))
 		if (objectp(ob) && ob->query("yz_owner") == me->query("id")) destruct(ob);
@@ -525,6 +534,15 @@ void spawn(object me, int stage)
 		(def["type"] == "item" ? "guard" : (def["key"] == "street" ? "vice" : "thug")),
 		def["who"], def["eid"]);
 	ob->set("yz_style", style_of(me));
+	if (s["tier"] > 0)
+	{
+		int q = ob->query("max_qi") * (10 + s["tier"] * 3) / 10;
+		ob->set("max_qi", q);
+		ob->set("eff_qi", q);
+		ob->set("qi", q);
+		ob->add_temp("apply/damage", s["tier"] * 4);
+		ob->add_temp("apply/unarmed_damage", s["tier"] * 4);
+	}
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。\n" NOR, ob);
 	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill " + def["eid"] + "）\n" NOR);
@@ -1262,6 +1280,8 @@ string overview(object me)
 		str += "　最快：" + fmt_time(me->query("yuanzheng/best_time"));
 	if (me->query("yuanzheng/best_gain"))
 		str += "　单局最高：" + me->query("yuanzheng/best_gain") + " 点";
+	if (me->query("yuanzheng/max_tier"))
+		str += "\n难度：下一局「" + tier_name(tier_of(me)) + "」，最高解锁「" + tier_name(me->query("yuanzheng/max_tier")) + "」";
 	str += "\n已买特权：" + (sizeof(got) ? implode(got, "、") : "还没有（yuanzheng shop）");
 	return str;
 }
@@ -1293,16 +1313,52 @@ void give_weapon(object me, string file)
 	ob->wield();
 }
 
+// 难度：打通一档解锁下一档，敌人更硬、结算声望更多。0 档就是原来的远征
+#define MAX_TIER 5
+int tier_of(object me)
+{
+	int t = me->query("yuanzheng/tier"), top = me->query("yuanzheng/max_tier");
+
+	if (t > top) t = top;
+	return t < 0 ? 0 : t;
+}
+
+string tier_name(int t)
+{
+	return t > 0 ? "险" + chinese_number(t) : "寻常";
+}
+
+int set_tier(object me, int n)
+{
+	int top = me->query("yuanzheng/max_tier");
+
+	if (! intp(n) || n < 0 || n > top)
+		return notify_fail("现在能选的难度是 0 到 " + top + "（每打通一档解锁下一档）。\n");
+	me->set("yuanzheng/tier", n);
+	tell_object(me, "下一局的难度定为「" + tier_name(n) + "」" +
+		(n ? "：敌人气血多 " + (n * 30) + "%、出手更重，结算声望多 " + (n * 50) + "%。" : "。") + "\n");
+	style_menu(me);
+	return 1;
+}
+
 void style_menu(object me)
 {
-	tell_object(me, ZJOBLONG "选一个流派开局\n" +
+	int top = me->query("yuanzheng/max_tier"), t = tier_of(me), i;
+	string tiers = "";
+
+	if (top > 0)
+	{
+		for (i = 0; i <= top; i++)
+			if (i != t) tiers += "难度：" + tier_name(i) + ":yuanzheng tier " + i + ZJSEP;
+	}
+	tell_object(me, ZJOBLONG "选一个流派开局" + (top > 0 ? "（难度：" + tier_name(t) + "）" : "") + "\n" +
 		"剑客：长剑 + 剑法，招架稳，出手快\n" +
 		"拳师：空手 + 拳脚，身法最灵，贴身短打\n" +
 		"刀客：单刀 + 刀法，血厚甲硬，一刀是一刀\n" +
 		ZJOBACTS2 + ZJMENUF(3, 3, 8, 30) +
 		"剑客:yuanzheng start sword" ZJSEP +
 		"拳师:yuanzheng start fist" ZJSEP +
-		"刀客:yuanzheng start blade" ZJSEP + "\n");
+		"刀客:yuanzheng start blade" + (sizeof(tiers) ? ZJSEP + tiers[0..<sizeof(ZJSEP)+1] : "") + "\n");
 }
 
 // 有一局没收尾时（打完没结算、或者卡在某一关），把能做的事摆出来
@@ -1341,7 +1397,7 @@ int start(object me, string style, string city)
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
 	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
 	       "coin":0, "charm":0, "stall":({}),
-	       "order":({0,1,2,3,4}), "planning":1 ]);
+	       "order":({0,1,2,3,4}), "planning":1, "tier":tier_of(me) ]);
 	roll_stall(me, s);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
@@ -1391,7 +1447,8 @@ int start(object me, string style, string city)
 	if (has_perk(me, "spoil")) give_start_spoil(me, perks_of(me, "spoil"));
 	if (s["life"] <= 1)
 		tell_object(me, HIY "（只剩最后一条命：这一趟里倒下就结束了，路上别硬碰硬。）" NOR "\n");
-	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命。\n" +
+	tell_object(me, "你以" + st["name"] + "的身份踏上了江湖远征：五关，" + s["life"] + " 条命" +
+		(s["tier"] ? "，难度「" + tier_name(s["tier"]) + "」" : "") + "。\n" +
 		st["desc"] + "\n" +
 		"一、剿匪　二、夺宝　三、寻访　四、截杀　五、终局\n" +
 		"这一趟去" + city_of(me)["name"] + "。\n");
@@ -1547,6 +1604,7 @@ int settle(object me)
 	if (s["stage"] < sizeof(stages)) return notify_fail("还有关卡没有通过，不能结算。\n");
 	gain = 8 + sizeof(s["talents"]) * 2 + (s["life"] - 1) * 3;
 	if (has_perk(me, "gain")) gain += gain * 20 / 100;
+	if (s["tier"] > 0) gain += gain * s["tier"] * 50 / 100;
 	give_spoil(me, s["style"]);
 	me->set("yuanzheng/last_style", s["style"]);
 	me->add("yuanzheng/prestige", gain);
@@ -1561,6 +1619,12 @@ int settle(object me)
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
 		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n" +
 		"想再来一局的话，再开一次远征（yuanzheng）。\n");
+	if (s["tier"] >= me->query("yuanzheng/max_tier") && s["tier"] < MAX_TIER)
+	{
+		me->set("yuanzheng/max_tier", s["tier"] + 1);
+		me->set("yuanzheng/tier", s["tier"] + 1);
+		tell_object(me, HIY "解锁新难度「" + tier_name(s["tier"] + 1) + "」：敌人更硬，结算声望更多。下一局默认就是它，开局时也能改回去。" NOR "\n");
+	}
 	end_run(me);
 	return 1;
 }

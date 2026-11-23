@@ -332,7 +332,8 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
   check('zjrogue: 五关打完后菜单不报错', /五关已经全部通过/.test(await text()) && ! /Array index|未知错误/.test(await text()), (await text()).slice(-200));
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
-  check('zjrogue: 结算后顶栏简讯收起', await until(page, () => !document.getElementById('yzbar'), 5000));
+  check('zjrogue: 结算后顶栏换成「再来一局」入口', await until(page, () => /再来一局/.test(document.getElementById('yzbar')?.textContent || ''), 8000),
+    await page.evaluate(() => document.getElementById('yzbar')?.textContent || '(无顶栏)'));
   await waitText(/获得远征声望 \d+ 点/, 15000);
   {
     const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());
@@ -341,6 +342,7 @@ async function zjrogueExtras(page) {
     check('zjrogue: settle shows 本局统计', await waitText(/本局用时 \d+/, 5000), (await text()).slice(-160));
   check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
   check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
+  check('zjrogue: 打通一局解锁下一档难度', /解锁新难度「险一」/.test(await text()), (await text()).slice(-160));
   }
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
   check('zjrogue: run cleared after settle', /尚未开始远征/.test(await out()), await out());
@@ -352,6 +354,7 @@ async function zjrogueExtras(page) {
   check('zjrogue: 面板记下通关与最好成绩', /已通关：1 局/.test(await text()) && /单局最高：\d+ 点/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng start blade'); await page.waitForTimeout(2000);
   check('zjrogue: 第二局能正常开始', /你以刀客的身份踏上了江湖远征/.test(await text()), (await text()).slice(-200));
+  check('zjrogue: 第二局默认用新解锁的难度', /难度「险一」/.test(await text()) && /远征·险一：/.test(await page.evaluate(() => document.getElementById('yzbar')?.textContent || '')), (await text()).slice(-200));
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
   check('zjrogue: 第二局从第一关开始', /一、剿匪/.test(await out()), await out());
   await send(page, 'yuanzheng start fist'); await page.waitForTimeout(1500);
@@ -375,7 +378,7 @@ async function zjrogueExtras(page) {
   await page.waitForTimeout(2500);
   await page.reload({ waitUntil: 'load' });
   await until(page, () => document.querySelectorAll('#exits td').length === 9, 180000);
-  check('zjrogue: 刷新页面后顶栏接着显示远征进度', await until(page, () => /远征：.*命/.test(document.getElementById('yzbar')?.textContent || ''), 15000),
+  check('zjrogue: 刷新页面后顶栏接着显示远征进度', await until(page, () => /远征.*：.*命/.test(document.getElementById('yzbar')?.textContent || ''), 15000),
     await page.evaluate(() => document.getElementById('yzbar')?.textContent || '(无顶栏)'));
   // 远征途中照常做别的事：pause 把局里的目标收起来，进度留着
   await send(page, 'yuanzheng pause'); await page.waitForTimeout(1500);
