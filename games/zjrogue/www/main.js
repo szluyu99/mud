@@ -1153,7 +1153,7 @@ function writecmd() {
 function writeServerData(buf) {
 	var line = buf;
 	// strip ANSI colour codes that precede a protocol code (e.g. NOR after \n)
-	line = line.replace(/^(?:\x1b\[[0-9;]*m)+(?=\x1b\d{3})/, '');
+	line = line.replace(/^(?:\x1b\[[0-9;]*m)+(?=\x1b\d{3}|YZ#)/, '');
 	
 		if(line.length<4) return;
 

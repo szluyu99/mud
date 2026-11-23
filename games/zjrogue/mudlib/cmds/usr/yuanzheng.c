@@ -71,6 +71,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "jump %d", n) == 1) return YZ_D->jump(me, n);
 	if (sscanf(arg, "stall %d", n) == 1) return YZ_D->buy_stall(me, n);
 	if (sscanf(arg, "tier %d", n) == 1) return YZ_D->set_tier(me, n);
+	if (sscanf(arg, "debugtier %d", n) == 1) return YZ_D->debug_tier(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)

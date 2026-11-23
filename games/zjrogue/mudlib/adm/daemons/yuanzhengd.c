@@ -3,6 +3,7 @@
 #include <ansi.h>
 
 #define MAX_LIFE 3
+#define MAX_TIER 5
 #define BACK_ROOM "/d/city/kedian"
 #define YZ_ENEMY "/kungfu/class/yuanzheng/enemy"
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
@@ -209,6 +210,17 @@ int debug_sp(object me, int n)
 	me->add("yuanzheng/prestige", n);
 	me->add("yuanzheng/earned", n);
 	tell_object(me, "（调试）声望 +" + n + "，现在是 " + me->query("yuanzheng/prestige") + "。\n");
+	return 1;
+}
+
+// 巫师调试：直接解锁到第 n 档，用来测高难度是否打得过
+int debug_tier(object me, int n)
+{
+	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
+	if (n < 0 || n > MAX_TIER) return notify_fail("难度 0 到 " + MAX_TIER + "。\n");
+	me->set("yuanzheng/max_tier", n);
+	me->set("yuanzheng/tier", n);
+	tell_object(me, "（调试）最高难度解锁到 " + n + "。\n");
 	return 1;
 }
 
@@ -524,8 +536,8 @@ void spawn(object me, int stage)
 		ob = new(YZ_INFO);
 		ob->set("yz_owner", me->query("id"));
 		ob->move(room);
-		message_vision(HIC "一个缩着脖子的人凑了过来，好像在等谁。\n" NOR, ob);
-		tell_object(me, HIC "线人已经在了（ask xianren about 远征）\n" NOR);
+		message_vision(HIC "一个缩着脖子的人凑了过来，好像在等谁。" NOR "\n", ob);
+		tell_object(me, HIC "线人已经在了（ask xianren about 远征）" NOR "\n");
 		return;
 	}
 
@@ -544,8 +556,8 @@ void spawn(object me, int stage)
 		ob->add_temp("apply/unarmed_damage", s["tier"] * 4);
 	}
 	ob->move(room);
-	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。\n" NOR, ob);
-	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill " + def["eid"] + "）\n" NOR);
+	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。" NOR "\n", ob);
+	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill " + def["eid"] + "）" NOR "\n");
 
 }
 
@@ -660,7 +672,7 @@ void begin_stage(object me)
 		if (it->query("yz_weapon") || it->query("yz_start_spoil"))
 			it->set("no_drop", 1);
 	if (objectp(env = environment(me)) && base_name(env) == stage_room(me, def))
-		tell_object(me, HIC "目标就在此地。\n" NOR);
+		tell_object(me, HIC "目标就在此地。" NOR "\n");
 	else
 		tell_object(me, "（点菜单里的「带我去」或输入上面那句，会自动走过去；要先去干别的就 yuanzheng pause。）\n");
 }
@@ -825,20 +837,20 @@ void complete_stage(object me)
 	s["coin"] = (s["coin"] || 0) + earned;
 	roll_stall(me, s);
 	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 " + (1 + (int)def["point"]) +
-		" 点属性点，捡到 " + earned + " 枚铜钱。\n" NOR);
+		" 点属性点，捡到 " + earned + " 枚铜钱。" NOR "\n");
 	// 剿匪/截杀给的是一小段时间的攻击、伤害加成，换关就淡掉
 	if (stringp(def["up"]))
 	{
 		int add = def["up"] == "attack" ? 10 : 8;
 		s["buff"]["apply/" + def["up"]] = (s["buff"]["apply/" + def["up"]] || 0) + add;
 		me->add_temp("apply/" + def["up"], add);
-		tell_object(me, HIC "（" + def["gain"] + "）\n" NOR);
+		tell_object(me, HIC "（" + def["gain"] + "）" NOR "\n");
 	}
 	else if (stringp(def["gain"]))
-		tell_object(me, HIC "（" + def["gain"] + "）\n" NOR);
+		tell_object(me, HIC "（" + def["gain"] + "）" NOR "\n");
 	if (s["stage"] >= sizeof(stages))
 	{
-		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。\n" NOR);
+		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。" NOR "\n");
 		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return;
 	}
@@ -900,7 +912,7 @@ void enemy_died(object killer, object enemy)
 		}
 		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
 			city_of(me)["name"] + "·" + room_name(city_of(me)["inn"]) +
-			"上交（yuanzheng submit）。\n" NOR);
+			"上交（yuanzheng submit）。" NOR "\n");
 		tell_object(me, "  （自动带路：去 " + city_of(me)["inn"] + "）\n");
 		return;
 	}
@@ -1060,14 +1072,14 @@ int on_die(object me)
 		me->set_temp("yuanzheng", s);
 		save_run(me);
 		me->set_override("die", (: call_other, __FILE__, "on_die" :));
-		tell_object(me, HIY "免死符烧成一道黄光，替你挡下了这一下。\n" NOR);
+		tell_object(me, HIY "免死符烧成一道黄光，替你挡下了这一下。" NOR "\n");
 		return 1;
 	}
 	s["life"] -= 1;
 	s["deaths"] = (s["deaths"] || 0) + 1;
 	if (s["life"] <= 0)
 	{
-		tell_object(me, HIR "三条命都用完了，本局远征结束。局内天赋消散。\n" NOR);
+		tell_object(me, HIR "三条命都用完了，本局远征结束。局内天赋消散。" NOR "\n");
 		me->revive(1);
 		me->set("qi", me->query("max_qi"));
 		me->set("eff_qi", me->query("max_qi"));
@@ -1314,7 +1326,6 @@ void give_weapon(object me, string file)
 }
 
 // 难度：打通一档解锁下一档，敌人更硬、结算声望更多。0 档就是原来的远征
-#define MAX_TIER 5
 int tier_of(object me)
 {
 	int t = me->query("yuanzheng/tier"), top = me->query("yuanzheng/max_tier");
