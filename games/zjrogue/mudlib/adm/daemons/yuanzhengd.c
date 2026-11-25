@@ -1058,7 +1058,7 @@ int by_hand(object me)
 int on_die(object me)
 {
 	mapping s = state(me);
-	int own;
+	int own, lost;
 
 	if (! s) return 0;
 	// 正在正常游玩（身边没有在打的人和局里的目标）时死了，不该拿远征的命来抵
@@ -1091,7 +1091,19 @@ int on_die(object me)
 	s["deaths"] = (s["deaths"] || 0) + 1;
 	if (s["life"] <= 0)
 	{
-		tell_object(me, HIR "三条命都用完了，本局远征结束。局内天赋消散。" NOR "\n");
+		// 输了也按过了几关给一点声望，不然高难度失败一局等于白打，商店永远买不起
+		lost = s["stage"] * 2;
+		if (s["tier"] > 0) lost += lost * s["tier"] * 50 / 100;
+		if (lost > 0)
+		{
+			me->add("yuanzheng/prestige", lost);
+			me->add("yuanzheng/earned", lost);
+		}
+		tell_object(me, HIR "命都用完了，本局远征结束。局内天赋消散。" NOR "\n" +
+			"这一局打到「" + (s["stage"] < sizeof(stages) ? def_at(s, s["stage"])["title"] : "终局") +
+			"」，过了 " + s["stage"] + " 关，用时 " + fmt_time(time() - s["started"]) + "。" +
+			(lost > 0 ? "按过关数带回远征声望 " + lost + " 点。" : "一关没过，没带回声望。") + "\n" +
+			"想再来的话，点顶栏重开一局；远征商店里的「命硬」能多一条命。\n");
 		me->revive(1);
 		me->set("qi", me->query("max_qi"));
 		me->set("eff_qi", me->query("max_qi"));
@@ -1643,7 +1655,7 @@ int settle(object me)
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n" +
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
 		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n" +
-		"想再来一局的话，再开一次远征（yuanzheng）。\n");
+		"想再来一局的话，点顶栏重开。\n");
 	if (s["tier"] >= me->query("yuanzheng/max_tier") && s["tier"] < MAX_TIER)
 	{
 		me->set("yuanzheng/max_tier", s["tier"] + 1);

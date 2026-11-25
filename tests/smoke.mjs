@@ -368,11 +368,11 @@ async function zjrogueExtras(page) {
   check('zjrogue: 局内东西挂着不可丢弃', /局内的东西|借来的/.test(await text()), (await text()).slice(-100));
   // 只剩一条命时还是会照常判输赢，所以这里只看到底是「死在远征里」还是「死在别处」
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
-  check('zjrogue: 正常游玩死了不扣远征的命', await cmd('kill ehan', /这一下不是远征里的打斗|还剩 1 条命|条命都用完了|闷哼一声/, 90000), await out());
+  check('zjrogue: 正常游玩死了不扣远征的命', await cmd('kill ehan', /这一下不是远征里的打斗|还剩 1 条命|命都用完了|闷哼一声/, 90000), await out());
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
   {
     const t = await text();
-    check('zjrogue: 那一局的进度没变', /一、剿匪|远征的 1 条命还在/.test(t) && ! /三条命都用完了/.test(t), t.slice(-200));
+    check('zjrogue: 那一局的进度没变', /一、剿匪|远征的 1 条命还在/.test(t) && ! /命都用完了/.test(t), t.slice(-200));
   }
   // 刷新页面：进度要已经写盘，重新进来顶栏直接挂着当前关卡（不用先点一下远征）
   await page.waitForTimeout(2500);
@@ -384,6 +384,8 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng pause'); await page.waitForTimeout(1500);
   check('zjrogue: pause 把局里的东西先收走', /你决定先去|局里的事先撂下了/.test(await text()) && /局内的东西也先收走/.test(await text()), (await text()).slice(-150));
   await send(page, 'yuanzheng abandon'); await page.waitForTimeout(1500);
+  check('zjrogue: 放弃远征要先确认', /真的放弃这一局/.test(await text()) && /远征.*：.*命/.test(await page.evaluate(() => document.getElementById('yzbar')?.textContent || '')), (await text()).slice(-150));
+  await send(page, 'yuanzheng abandon yes'); await page.waitForTimeout(1500);
   // 天赋/临时技能都要还原，不然等于白送属性
   const st1 = await stats();
   const key = (x) => [x.a.con, x.a.dex, x.a.int, x.a.str, x.p.combat_exp].join('/');

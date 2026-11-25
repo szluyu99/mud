@@ -81,7 +81,14 @@ int main(object me, string arg)
 	case "talents":	YZ_D->talent_menu(me); return 1;
 	case "submit":	return YZ_D->submit(me);
 	case "settle":	return YZ_D->settle(me);
-	case "abandon":	return YZ_D->abandon(me);
+	// 手机上误点一下就丢一整局：先确认
+	case "abandon":
+		if (! YZ_D->state(me)) return notify_fail("你还没有开始远征。\n");
+		tell_object(me, ZJOBLONG "真的放弃这一局？局内天赋、钱和借来的兵器都会收回，这一局不算声望。\n"
+			ZJOBACTS2 + ZJMENUF(2, 2, 8, 30) +
+			"确定放弃:yuanzheng abandon yes" ZJSEP "接着打:yuanzheng resume\n");
+		return 1;
+	case "abandon yes":	return YZ_D->abandon(me);
 	case "debugwin":	return YZ_D->debug_win(me);
 	case "resume":	return YZ_D->resume(me);
 	case "brief":	return YZ_D->brief_menu(me), 1;
@@ -101,7 +108,8 @@ int main(object me, string arg)
 int help(object me)
 {
 	write("远征：开局先选流派（剑客/拳师/刀客），五关依次是剿匪、夺宝、寻访、截杀、终局。\n"
-	      "每过一关得到 1 点属性点并三选一天赋（天赋按流派给）；三条命，倒下回客店；\n"
+	      "每过一关得到 1 点属性点并三选一天赋（天赋按流派给）；三条命（商店「命硬」能加），倒下回本城落脚处，这一关重来；\n"
+	      "命用完这局就结束，按过了几关带回少量声望；\n"
 	      "每局的城是随机挑的（扬州、苏州、杭州、泉州），五关都在那一带；\n"
 	      "开局先看悬赏榜，挑一条路（yuanzheng plan 1|2|3）决定先做哪一桩；\n"
 	      "五关全过后 yuanzheng settle 结算远征声望，声望可以在 yuanzheng shop 里换常驻特权。\n"
