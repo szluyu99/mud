@@ -247,6 +247,9 @@ async function zjrogueExtras(page) {
   check('zjrogue: 买下命硬', /换到了「命硬」/.test(await out()), await out());
   await send(page, 'yuanzheng buy 4'); await page.waitForTimeout(1200);
   check('zjrogue: 买下名望', /换到了「名望」/.test(await out()), await out());
+  check('zjrogue: 买完商店还开着，能接着买', /远征商店（声望：\d+）/.test(await text()) && /名望（[^）]*已拥有）/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng buy 4'); await page.waitForTimeout(1200);
+  check('zjrogue: 重复买会提示已拥有并留在商店', /已经拥有了「名望」/.test(await text()) && /远征商店（声望/.test(await text()), (await text()).slice(-200));
   // 局外特权现在是三条线：还没买「磨砺」时，「眼力」只显示前置条件，没有购买入口
   await send(page, 'yuanzheng shop'); await page.waitForTimeout(1200);
   check('zjrogue: 二三级特权要先买前一级', /眼力（先买「磨砺」）/.test(await text()) && ! /buy 6/.test(await text()), (await text()).slice(-260));

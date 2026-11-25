@@ -191,15 +191,30 @@ int buy(object me, int n)
 
 	if (! intp(n) || n < 1 || n > sizeof(perks)) return notify_fail("没有这件特权。\n");
 	p = perks[n - 1];
-	if (has_perk(me, p["id"])) return notify_fail("你已经拥有了「" + p["name"] + "」。\n");
+	// 买不成也把商店留着，手机上不用再去找入口
+	if (has_perk(me, p["id"]))
+	{
+		tell_object(me, "你已经拥有了「" + p["name"] + "」。\n");
+		shop(me);
+		return 1;
+	}
 	if (stringp(p["need"]) && ! has_perk(me, p["need"]))
-		return notify_fail("得先有「" + perk_name(p["need"]) + "」才能买这个。\n");
+	{
+		tell_object(me, "得先有「" + perk_name(p["need"]) + "」才能买这个。\n");
+		shop(me);
+		return 1;
+	}
 	cost = p["cost"];
 	if (me->query("yuanzheng/prestige") < cost)
-		return notify_fail("声望不够：需要 " + cost + "，你只有 " + me->query("yuanzheng/prestige") + "。\n");
+	{
+		tell_object(me, "声望不够：需要 " + cost + "，你只有 " + me->query("yuanzheng/prestige") + "。\n");
+		shop(me);
+		return 1;
+	}
 	me->add("yuanzheng/prestige", -cost);
 	me->set("yuanzheng/perk/" + p["id"], 1);
 	tell_object(me, "你花 " + cost + " 点声望换到了「" + p["name"] + "」：" + p["desc"] + "。\n");
+	shop(me);
 	return 1;
 }
 
@@ -1246,7 +1261,7 @@ int stall(object me)
 	str = ZJOBLONG "路边的摊子\n铜钱：" + s["coin"] + "　（过一关会换一批货）\n"
 		ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
 	if (! arrayp(s["stall"]) || ! sizeof(s["stall"]))
-		str += "不买了:look" ZJSEP;
+		str += "这一批货卖完了（过一关换新货）:look" ZJSEP;
 	else
 	{
 		int i = 0;
@@ -1274,7 +1289,12 @@ int buy_stall(object me, int n)
 	id = s["stall"][n - 1];
 	if (! mapp(it = stall_item(id))) return notify_fail("摊子上没有这一件。\n");
 	if (s["coin"] < it["cost"])
-		return notify_fail("铜钱不够（要 " + it["cost"] + " 钱）。\n");
+	{
+		// 买不起也把摊子留着，好换一件
+		tell_object(me, "铜钱不够（要 " + it["cost"] + " 钱，你有 " + (s["coin"] || 0) + " 钱）。\n");
+		stall(me);
+		return 1;
+	}
 	s["coin"] -= it["cost"];
 	s["stall"] -= ({ id });
 	if (id == "hp")
@@ -1299,6 +1319,7 @@ int buy_stall(object me, int n)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	tell_object(me, "你买下了" + it["name"] + "：" + it["desc"] + "。\n");
+	stall(me);
 	return 1;
 }
 
@@ -1543,10 +1564,22 @@ void give_start_spoil(object me, int n)
 	string file, nm;
 
 	if (! stringp(style) || ! sizeof(style)) style = "sword";
+	string *extra = ({ YZ_SPOIL_ARMOR, YZ_SPOIL_BOOTS, YZ_SPOIL_MIRROR });
+	string *got = ({});
+
 	file = spoil_file(style);
 	while (n-- > 0)
 	{
-		object ob = new(file);
+		object ob;
+		// 第二件起从护具里挑一件没拿过的，免得开局背两把一样的剑、只能用一把
+		if (member_array(file, got) >= 0)
+		{
+			string *left = extra - got;
+			if (! sizeof(left)) break;
+			file = left[random(sizeof(left))];
+		}
+		got += ({ file });
+		ob = new(file);
 		if (! objectp(ob)) continue;
 		// 局内借来的兵器靠这个标记在结算时收回；战利品只记自己的标记，
 		// 否则下一关清场时会被清掉、玩家也留不住它
@@ -1554,7 +1587,7 @@ void give_start_spoil(object me, int n)
 		ob->move(me, 1);
 		if (ob->query("armor_prop/armor")) ob->wear();
 		else ob->wield();
-		nm = ob->query("name") || "战利品";
+		nm = (nm ? nm + "、" : "") + (ob->query("name") || "战利品");
 	}
 	tell_object(me, "（行囊里带着上次的" + (nm || "战利品") + "，已经穿上）\n");
 }
