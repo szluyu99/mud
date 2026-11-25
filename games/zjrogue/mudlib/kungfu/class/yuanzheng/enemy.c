@@ -59,6 +59,7 @@ void setup_from(object me, int stage, string kind, string cname, string cid)
 	set("max_neili", 100 + stage * 60);
 	set("neili", 100 + stage * 60);
 	set("jiali", 0);
+	// 寻常档故意让敌人几乎打不中（出手值算出来是 0）；险档在 yuanzhengd spawn 里补经验
 	set("combat_exp", 10 + stage * 100);
 
 	set_skill("unarmed", lvl);
@@ -196,6 +197,8 @@ void vice_fled()
 	set_temp("yz_dead", 1);
 	set("qi", query("max_qi"));
 	set("eff_qi", query("max_qi"));
+	remove_all_killer();
+	remove_all_enemy(1);
 	if (objectp(room))
 		tell_room(room, HIY + query("name") + HIY "见势不妙，一转身钻进巷子跑了。\n" NOR, ({ this_object() }));
 	if (objectp(owner))
@@ -209,6 +212,9 @@ void heart_beat()
 
 	::heart_beat();
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
+	// 给正在跟我打的玩家记一笔：他这几秒里倒下，就是远征里的打斗（见 yuanzhengd by_hand）
+	foreach (who in query_enemy())
+		if (objectp(who) && userp(who)) who->set_temp("yz_fought_at", time());
 	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
 		die(query_temp("last_damage_from"));
 	// 副手三成血开跑，但离倒下只差几拳的时候就不跑了，否则快到手的窗口一下全白费。
@@ -261,6 +267,10 @@ void die(object killer)
 	// 下一秒这个对象就被清场了，所以这里只要让它别触发二次死亡就够了
 	set("qi", query("max_qi"));
 	set("eff_qi", query("max_qi"));
+	// 倒下这一刻就停手：对象要等一秒才清掉，这一秒里心跳还会出招，
+	// 关卡已经算完了再打死玩家，远征就不认这一下（玩家白白死一次）
+	remove_all_killer();
+	remove_all_enemy(1);
 	if (! objectp(killer)) killer = find_owner();
 	if (objectp(env))
 		tell_room(env, HIR + me->query("name") + HIR "闷哼一声，倒了下去。\n" NOR, ({ me }));

@@ -469,9 +469,14 @@ void purge(object *obs)
 
 // 不能在 NPC 自己的调用栈里 destruct 它：ask/kill 这些命令返回后还要用这个对象，
 // 当场销毁会报 "Bad argument 1 to EFUN call_other()"，玩家看到的就是默认错误提示。
-void clean_world(object me, int stage)
+// 不带 stage 时清掉这名玩家的全部局内目标。原来只写了 stage < 0 才算「全部」，
+// 可省略参数时 LPC 传的是 0，结果倒下后只清第一关的目标：别的关卡的敌人留在原地，
+// 回去还是那一只，血也一直在回，玩家一走回去就接着挨打。
+varargs void clean_world(object me, int stage)
 {
 	object ob, *kill = ({});
+
+	if (undefinedp(stage)) stage = -1;
 
 	foreach (ob in children(YZ_ENEMY))
 		if (ob && ob->query("yz_owner") == me->query("id") &&
@@ -554,6 +559,10 @@ void spawn(object me, int stage)
 		ob->set("qi", q);
 		ob->add_temp("apply/damage", s["tier"] * 4);
 		ob->add_temp("apply/unarmed_damage", s["tier"] * 4);
+		// 出手值 = (技能³/10000 + 经验/1000) / 30 取整 × 臂力：原来敌人经验只有几百，
+		// 取整后是 0，险五的匪首也几乎碰不到玩家。补到三万起，敌人才真正打得中人
+		// （险一约五成，险五的后两关约七成）；敌人躲闪的技能是 0，走另一条分支，不变。
+		ob->set("combat_exp", 25000 + s["tier"] * 5000);
 	}
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。" NOR "\n", ob);
@@ -577,7 +586,8 @@ int where(object me)
 	if (! mapp(def = cur_stage(me))) return notify_fail("五关已经打完了。\n");
 	env = environment(me);
 	write("stage=" + s["stage"] + " room=" + stage_room(me, def) +
-	      " here=" + (env ? base_name(env) : "none") + "\n");
+	      " here=" + (env ? base_name(env) : "none") +
+	      " me=" + me->query("qi") + "/" + me->query("max_qi") + "\n");
 	// 排障用：这一关的对手还剩多少血、是不是已经判过死
 	if (objectp(ob = find_my_enemy(me, s["stage"])))
 		write("foe=" + ob->query("qi") + "/" + ob->query("max_qi") +
@@ -1037,6 +1047,8 @@ int by_hand(object me)
 	object who;
 
 	if (in_battle(me)) return 1;
+	// 局内对手刚倒下、刚被收走，房间里已经没人了，但这一下伤确实是他打的
+	if (time() - (int)me->query_temp("yz_fought_at") <= 5) return 1;
 	if (objectp(who = me->query_temp("last_damage_from")) && objectp(environment(who)) &&
 	    environment(who) == environment(me))
 		return 1;
@@ -1102,6 +1114,8 @@ int on_die(object me)
 	if (s["life"] <= 1)
 		tell_object(me, HIR "（再倒下一次，这一局就结束了。）" NOR);
 	tell_object(me, "\n");
+	// 顶栏的命数要跟着变，不然玩家看着还是 3/3
+	tell_object(me, "YZ#" + status_line(me) + "\n");
 	return 1;
 }
 
