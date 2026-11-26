@@ -77,7 +77,7 @@ int main(object me, string arg)
 	switch (arg)
 	{
 	case "start":	return YZ_D->start(me, "", "");
-	case "status":	write(YZ_D->status(me) + "\n"); return 1;
+	case "status":	write(YZ_D->status(me) + "\n" + (YZ_D->state(me) ? "" : YZ_D->overview(me) + "\n")); return 1;
 	case "talents":	YZ_D->talent_menu(me); return 1;
 	case "submit":	return YZ_D->submit(me);
 	case "settle":	return YZ_D->settle(me);

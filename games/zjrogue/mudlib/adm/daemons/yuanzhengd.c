@@ -568,16 +568,18 @@ void spawn(object me, int stage)
 	ob->set("yz_style", style_of(me));
 	if (s["tier"] > 0)
 	{
-		int q = ob->query("max_qi") * (10 + s["tier"] * 3) / 10;
+		// 险四、险五每档涨得慢一些：原来险五五局只赢一局，全死在终局匪首手里
+		int over = s["tier"] > 3 ? s["tier"] - 3 : 0;
+		int q = ob->query("max_qi") * (20 + s["tier"] * 6 - over * 3) / 20;
 		ob->set("max_qi", q);
 		ob->set("eff_qi", q);
 		ob->set("qi", q);
-		ob->add_temp("apply/damage", s["tier"] * 4);
-		ob->add_temp("apply/unarmed_damage", s["tier"] * 4);
+		ob->add_temp("apply/damage", s["tier"] * 4 - over * 2);
+		ob->add_temp("apply/unarmed_damage", s["tier"] * 4 - over * 2);
 		// 出手值 = (技能³/10000 + 经验/1000) / 30 取整 × 臂力：原来敌人经验只有几百，
 		// 取整后是 0，险五的匪首也几乎碰不到玩家。补到三万起，敌人才真正打得中人
 		// （险一约五成，险五的后两关约七成）；敌人躲闪的技能是 0，走另一条分支，不变。
-		ob->set("combat_exp", 25000 + s["tier"] * 5000);
+		ob->set("combat_exp", 25000 + s["tier"] * 5000 - over * 2500);
 	}
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。" NOR "\n", ob);
