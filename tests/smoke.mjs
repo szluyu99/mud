@@ -323,6 +323,12 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   check('zjrogue: 天赋里能抽到★稀有天赋', await until(page, () => /★/.test(document.body.innerText), 8000), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
+  // 流派专属遭遇：剑客能遇到「剑谱残页」，选了以后状态里记着流派心得
+  await send(page, 'yuanzheng debugevent 10'); await page.waitForTimeout(1000);
+  check('zjrogue: 剑客能遇到流派专属的「剑谱残页」', /剑谱残页/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
+  check('zjrogue: 状态里显示流派心得', /流派心得：剑谱残页/.test(await text()), (await text()).slice(-200));
 
   // 四、截杀副手（匪首在第四关打完时刷出，先把这局的匪首定成会喊人的啸山虎，打法和原来最接近）
   await send(page, 'yuanzheng debugboss 0'); await page.waitForTimeout(800);

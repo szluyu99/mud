@@ -296,6 +296,7 @@ varargs int debug_rare(object me, string id)
 	{
 		// 直接给一张稀有天赋，用来实测效果；burnhit 模拟「玉石俱焚」砍过一刀后重刷
 		if (id == "burnhit") s["burn_hit"] = 1;
+		else if (stringp(style_mods()[id])) add_smod(s, id);
 		else
 		{
 			if (! mapp(s["rare"])) s["rare"] = ([]);
@@ -979,7 +980,38 @@ mapping *event_pool()
 		   "opts":({ "运功替他疗伤（掉一半气血，他留下 1 点属性点的心得）", "给他指条下山的路（回两成气血）" }) ]),
 		([ "title":"荒村古井", "desc":"村口一口古井，井绳还在，井底隐约有东西反光。",
 		   "opts":({ "打水歇一歇（回三成气血）", "顺着井绳下去摸（一半机会摸到 15 枚铜钱，一半摔掉两成气血）" }) ]),
+		// 下面三件只有对应流派会遇到
+		([ "title":"剑谱残页", "style":"sword", "desc":"破庙供桌底下压着半张剑谱，纸都黄了，画的是一路连环快剑。",
+		   "opts":({ "坐下参悟（掉一成气血；本局连招起手就算第二下）", "卷起来卖给书摊（得 12 枚铜钱）" }) ]),
+		([ "title":"木人桩", "style":"fist", "desc":"武馆后院立着一排木人桩，桩头被打得发亮，没人看着。",
+		   "opts":({ "打一下午桩（掉两成气血；本局寸劲从两倍变成两倍半）", "靠着桩歇一会（回三成气血）" }) ]),
+		([ "title":"磨刀石", "style":"blade", "desc":"溪边一块青石，上面一道道全是磨刀的印子，旁边还搁着半瓢水。",
+		   "opts":({ "花 8 枚铜钱买瓢水，好好磨一磨（本局伤害 +12）", "拿刀背砸石头发狠（掉一成气血；本局浴血从一半血放宽到七成血）" }) ]),
 	});
+}
+
+// 流派心得：局内事件、摊位货给的流派专属改动，enemy.c 的 style_damage 会读
+mapping style_mods()
+{
+	return ([
+		"sword_head":"剑谱残页（连招起手算第二下）",
+		"sword_cap":"剑穗（连招封顶 +80%）",
+		"fist_power":"木人桩（寸劲两倍半）",
+		"fist_fast":"铁砂袋（寸劲每两下一次）",
+		"blade_rage":"砸石发狠（七成血就浴血）",
+		"blade_bite":"止血散（浴血伤害 +40%）",
+	]);
+}
+
+int has_smod(mapping s, string id)
+{
+	return mapp(s) && mapp(s["smod"]) && s["smod"][id];
+}
+
+void add_smod(mapping s, string id)
+{
+	if (! mapp(s["smod"])) s["smod"] = ([]);
+	s["smod"][id] = 1;
 }
 
 // 局内气血按上限的百分比加减，不会减到 0
@@ -1003,15 +1035,19 @@ int yz_pay(mapping s, int n)
 // 一局里不重复遇到同一件事；见全了再从头抽
 int pick_event(mapping s)
 {
-	int *left = ({}), n = sizeof(event_pool()), i;
+	mapping *pool = event_pool();
+	int *left = ({}), *all = ({}), n = sizeof(pool), i;
 
-	if (! arrayp(s["seen_ev"])) s["seen_ev"] = ({});
+	// 带 style 的事件只给对应流派
 	for (i = 0; i < n; i++)
+		if (! stringp(pool[i]["style"]) || pool[i]["style"] == s["style"]) all += ({ i });
+	if (! arrayp(s["seen_ev"])) s["seen_ev"] = ({});
+	foreach (i in all)
 		if (member_array(i, s["seen_ev"]) < 0) left += ({ i });
 	if (! sizeof(left))
 	{
 		s["seen_ev"] = ({});
-		for (i = 0; i < n; i++) left += ({ i });
+		left = all;
 	}
 	i = left[random(sizeof(left))];
 	s["seen_ev"] += ({ i });
@@ -1192,6 +1228,52 @@ int resolve_event(object me, int n)
 			yz_heal(me, -20);
 			tell_object(me, "井绳断了一截，你摔在井底，爬上来时掉了两成气血。\n");
 		}
+		break;
+	case 10:	// 剑谱残页
+		if (n == 1)
+		{
+			yz_heal(me, -10);
+			add_smod(s, "sword_head");
+			tell_object(me, "你照着残页比划了半天，手腕一抖就是两剑——往后出剑，连招起手就算第二下。\n");
+		}
+		else
+		{
+			s["coin"] = (s["coin"] || 0) + 12;
+			tell_object(me, "书摊老板翻了翻，给了你 12 枚铜钱。\n");
+		}
+		break;
+	case 11:	// 木人桩
+		if (n == 1)
+		{
+			yz_heal(me, -20);
+			add_smod(s, "fist_power");
+			tell_object(me, "你把桩打得嗡嗡响，拳头肿了一圈，寸劲却透得更深了（两倍半）。\n");
+		}
+		else
+		{
+			yz_heal(me, 30);
+			tell_object(me, "你靠着木人桩坐了一会，回了三成气血。\n");
+		}
+		break;
+	case 12:	// 磨刀石
+		if (n == 1)
+		{
+			if (! yz_pay(s, 8))
+			{
+				tell_object(me, "你摸了摸钱袋，买不起那瓢水，只好拿刀背砸了石头出气。\n");
+				n = 2;
+			}
+			else
+			{
+				s["buff"]["apply/damage"] = (s["buff"]["apply/damage"] || 0) + 12;
+				me->add_temp("apply/damage", 12);
+				tell_object(me, "你蘸着水磨了半个时辰，刀口亮得晃眼（伤害 +12）。\n");
+				break;
+			}
+		}
+		yz_heal(me, -10);
+		add_smod(s, "blade_rage");
+		tell_object(me, "火星四溅，你心里那股狠劲上来了：往后七成血以下就开始浴血。\n");
 		break;
 	case 2:	// 赌坊
 		if (n == 1)
@@ -1601,6 +1683,14 @@ string gear(object me)
 		}
 	}
 	if (! n) str += "（没有局内的东西）";
+	if (mapp(s["smod"]) && sizeof(s["smod"]))
+	{
+		mapping names = style_mods();
+		string *got = ({});
+		foreach (string k in keys(s["smod"]))
+			if (stringp(names[k])) got += ({ names[k] });
+		str += "\n流派心得：" + implode(got, "、");
+	}
 	if (arrayp(s["set_aside"]) && sizeof(s["set_aside"]))
 		str += "\n收着的真兵器：结算或放弃时自己装回去。";
 	else
@@ -1616,16 +1706,23 @@ mapping *stall_pool()
 		([ "id":"armor", "name":"铁布衫符", "desc":"本局护甲 +10",   "cost":20 ]),
 		([ "id":"dmg",   "name":"快刀符",   "desc":"本局伤害 +15",   "cost":20 ]),
 		([ "id":"charm", "name":"免死符",   "desc":"下一次倒下不扣命", "cost":30 ]),
-		([ "id":"point", "name":"偷天换日", "desc":"多 1 点天赋点",  "cost":35 ])
+		([ "id":"point", "name":"偷天换日", "desc":"多 1 点天赋点",  "cost":35 ]),
+		// 流派货：只在对应流派的摊子上出现
+		([ "id":"sword_cap",  "style":"sword", "name":"剑穗",   "desc":"本局剑客连招封顶从 +50% 提到 +80%", "cost":25 ]),
+		([ "id":"fist_fast",  "style":"fist",  "name":"铁砂袋", "desc":"本局寸劲从每三下变成每两下一次",   "cost":25 ]),
+		([ "id":"blade_bite", "style":"blade", "name":"止血散", "desc":"本局浴血时伤害从 +25% 提到 +40%",   "cost":25 ]),
 	});
 }
 
 void roll_stall(object me, mapping s)
 {
-	mapping *pool = stall_pool();
+	mapping *pool = filter_array(stall_pool(), (: ! stringp($1["style"]) || $1["style"] == $2 :), s["style"]);
 	int *idx = allocate(sizeof(pool));
 	int i, j, t;
 
+	// 已经买过的流派货不再上架
+	pool = filter_array(pool, (: ! stringp($1["style"]) || ! has_smod($2, $1["id"]) :), s);
+	idx = allocate(sizeof(pool));
 	for (i = 0; i < sizeof(idx); i++) idx[i] = i;
 	for (i = sizeof(idx) - 1; i > 0; i--)
 	{
@@ -1708,6 +1805,8 @@ int buy_stall(object me, int n)
 		s["charm"] = (s["charm"] || 0) + 1;
 	else if (id == "point")
 		s["points"] += 1;
+	else if (stringp(it["style"]))
+		add_smod(s, id);
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	tell_object(me, "你买下了" + it["name"] + "：" + it["desc"] + "。\n");

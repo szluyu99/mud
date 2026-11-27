@@ -9,6 +9,7 @@ inherit NPC;
 object find_owner();
 int near_dead();
 int owner_rare(object who, string id);
+int owner_smod(object who, string id);
 
 void create()
 {
@@ -137,6 +138,14 @@ int owner_rare(object who, string id)
 	return YZ_D->has_rare(s, id);
 }
 
+// 玩家这一局有没有某个流派心得
+int owner_smod(object who, string id)
+{
+	mapping s;
+	if (! objectp(who) || ! mapp(s = YZ_D->state(who))) return 0;
+	return YZ_D->has_smod(s, id);
+}
+
 // 平时四分之一血就倒；有「看破」时三成血就倒
 int near_dead()
 {
@@ -158,7 +167,8 @@ int style_damage(string type, int damage, object who)
 
 	t = time();
 	// 五秒没接着打，连招就断了（浏览器里两拳之间有时会拖到三秒多）
-	hits = (t - query_temp("yz_last") > 5) ? 1 : query_temp("yz_hits") + 1;
+	// 「剑谱残页」：断了重来时起手就算第二下
+	hits = (t - query_temp("yz_last") > 5) ? (owner_smod(who, "sword_head") ? 2 : 1) : query_temp("yz_hits") + 1;
 	set_temp("yz_hits", hits);
 	set_temp("yz_last", t);
 
@@ -168,7 +178,9 @@ int style_damage(string type, int damage, object who)
 		{
 			// 剑客兵器最轻（长剑 25，大刀 40，拳师另有 +50 空手伤害），连招叠得更高来补：
 			// 第 2 下 +10%，每多一下 +10%，第 6 下起封顶 +50%
-			damage += damage * (hits > 6 ? 5 : hits - 1) / 10;
+			// 「剑穗」把封顶从 +50% 提到 +80%
+			int cap = owner_smod(who, "sword_cap") ? 8 : 5;
+			damage += damage * (hits - 1 > cap ? cap : hits - 1) / 10;
 			if (hits == 3)
 				message_vision(HIC "$N剑势连绵，一记快似一记！\n" NOR, who);
 			else if (hits == 6)
@@ -177,17 +189,19 @@ int style_damage(string type, int damage, object who)
 	}
 	else if (style == "fist")
 	{
-		if (hits % 3 == 0)
+		// 「铁砂袋」每两下一次，「木人桩」两倍半
+		if (hits % (owner_smod(who, "fist_fast") ? 2 : 3) == 0)
 		{
-			damage *= 2;
+			damage = owner_smod(who, "fist_power") ? damage * 5 / 2 : damage * 2;
 			message_vision(HIY "$N沉肩坐马，一记寸劲打在$n胸口！\n" NOR, who, this_object());
 		}
 	}
 	else if (style == "blade")
 	{
-		if (who->query("qi") * 2 <= who->query("max_qi"))
+		// 「砸石发狠」七成血就浴血，「止血散」浴血时 +40%
+		if (who->query("qi") * 10 <= who->query("max_qi") * (owner_smod(who, "blade_rage") ? 7 : 5))
 		{
-			damage += damage / 4;
+			damage += damage * (owner_smod(who, "blade_bite") ? 40 : 25) / 100;
 			if (hits % 2 == 0)
 				message_vision(HIR "$N身上带着血，刀法反倒更凶了！\n" NOR, who);
 		}
