@@ -136,9 +136,13 @@ int style_damage(string type, int damage, object who)
 	{
 		if (hits >= 2)
 		{
-			damage += damage * (hits > 4 ? 3 : hits - 1) / 10;
+			// 剑客兵器最轻（长剑 25，大刀 40，拳师另有 +50 空手伤害），连招叠得更高来补：
+			// 第 2 下 +10%，每多一下 +10%，第 6 下起封顶 +50%
+			damage += damage * (hits > 6 ? 5 : hits - 1) / 10;
 			if (hits == 3)
 				message_vision(HIC "$N剑势连绵，一记快似一记！\n" NOR, who);
+			else if (hits == 6)
+				message_vision(HIC "$N剑意已成，剑光连成一片！\n" NOR, who);
 		}
 	}
 	else if (style == "fist")

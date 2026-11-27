@@ -1469,6 +1469,12 @@ int start(object me, string style, string city)
 		s["buff"]["apply/unarmed_damage"] = 50;
 		me->add_temp("apply/unarmed_damage", 50);
 	}
+	// 剑客长剑最轻（25，大刀 40），实测一关要多砍一倍刀数、挨打也多一倍；补一点伤害
+	if (style == "sword")
+	{
+		s["buff"]["apply/damage"] += 20;
+		me->add_temp("apply/damage", 20);
+	}
 	if (style == "blade")
 	{
 		s["buff"]["apply/armor"] = 10;
