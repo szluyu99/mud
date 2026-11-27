@@ -50,6 +50,15 @@ mapping *bosses = ({
 	   "intro":"铁指判官竖起两根手指：「我这对指头，专点不长眼的人。」" ]),
 });
 
+// 夺宝关摸到的宝物：每局随机一件，终局匪首会提起它
+string *treasures = ({ "鎏金佛像", "翡翠扳指", "镖局账本", "前朝玉玺", "藏宝图残片", "盐引文书" });
+
+string treasure_of(mapping s)
+{
+	int i = intp(s["treasure"]) ? s["treasure"] : 0;
+	return treasures[i % sizeof(treasures)];
+}
+
 mapping boss_of(mapping s)
 {
 	int i = mapp(s) && intp(s["boss"]) ? s["boss"] : 0;
@@ -92,7 +101,7 @@ mapping styles = ([
 		    "skills" : ([ "blade" : 70, "parry" : 40, "dodge" : 30, "force" : 40 ]) ])
 ]);
 
-// 每个流派 5 关 x 3 选 1，按关卡顺序给，不重复
+// 每个流派 15 个普通天赋：每次随机抽三张（已选过的不再出），偶尔混进一张稀有天赋
 mapping talents = ([
 	"sword" : ({
 		([ "name":"起手式", "desc":"攻击 +12", "key":"attack", "value":12 ]),
@@ -146,6 +155,20 @@ mapping talents = ([
 		([ "name":"刀山", "desc":"攻击 +34", "key":"attack", "value":34 ])
 	})
 ]);
+
+// 稀有天赋：不加数值，改打法。四流派通用，一局最多出一次；效果在 enemy.c / on_die / complete_stage 里认 s["rare"]
+mapping *rare_talents = ({
+	([ "name":"嗜血", "desc":"稀有：每次打中敌人，回伤害一成的气血", "key":"rare", "value":"leech" ]),
+	([ "name":"玉石俱焚", "desc":"稀有：倒下时拼死一击，眼前的敌人掉一半血", "key":"rare", "value":"burn" ]),
+	([ "name":"看破", "desc":"稀有：敌人剩三成血就撑不住（平时要打到四分之一）", "key":"rare", "value":"break" ]),
+	([ "name":"财迷", "desc":"稀有：之后每过一关多捡 8 枚铜钱", "key":"rare", "value":"coin" ]),
+	([ "name":"不死身", "desc":"稀有：立刻多一条命", "key":"rare", "value":"life" ]),
+});
+
+int has_rare(mapping s, string id)
+{
+	return mapp(s) && mapp(s["rare"]) && s["rare"][id];
+}
 
 
 // ---- 局外成长：用远征声望买的常驻特权，每局开局生效 ----
@@ -263,6 +286,19 @@ int debug_tier(object me, int n)
 }
 
 // 巫师调试：指定这一局的匪首（从 0 数），终局已刷出来的话再 jump 5 重刷
+// 巫师调试：下一张天赋三选一里必带一张稀有天赋
+int debug_rare(object me)
+{
+	mapping s = state(me);
+	if (wiz_level(me) < 5 && ! wizardp(me)) return notify_fail("只有巫师能用。\n");
+	if (! s) return notify_fail("你现在不在远征里。\n");
+	s["force_rare"] = 1;
+	map_delete(s, "offer");
+	save_run(me);
+	tell_object(me, "（调试）下一次选天赋必带稀有天赋。\n");
+	return 1;
+}
+
 int debug_boss(object me, int n)
 {
 	mapping s = state(me);
@@ -434,12 +470,29 @@ void apply_talent(object me, mapping t)
 {
 	mapping s = state(me);
 	string key = t["key"];
-	int v = t["value"];
+	mixed v = t["value"];
 
-	if (key[0..3] == "max_" || key == "con" || key == "dex" || key == "int" || key == "str")
+	if (key == "rare")
+	{
+		if (! mapp(s["rare"])) s["rare"] = ([]);
+		s["rare"][v] = 1;
+		if (v == "life")
+		{
+			s["life"] += 1;
+			s["max_life"] = (s["max_life"] || MAX_LIFE) + 1;
+		}
+	}
+	else if (key[0..3] == "max_" || key == "con" || key == "dex" || key == "int" || key == "str")
 	{
 		me->add(key, v);
 		s["raw"][key] = (s["raw"][key] || 0) + v;
+		// 气血上限加了，眼前的气血也跟着加上：否则 100/360 不到三成，
+		// 下一关点「杀死」会被「你已经没有多余力气战斗了」挡住
+		if (key == "max_qi")
+		{
+			me->add("eff_qi", v);
+			me->add("qi", v);
+		}
 	} else
 	{
 		me->add_temp("apply/" + key, v);
@@ -670,7 +723,9 @@ void spawn(object me, int stage)
 	if (def["type"] == "boss")
 	{
 		ob->set("yz_boss", boss_of(s)["id"]);
-		ob->set("yz_intro", boss_of(s)["intro"]);
+		// 开场白前接一句前情：他记得你拿走的宝物和截下的副手
+		ob->set("yz_intro", boss_of(s)["name"] + "冷冷看着你：「我的" + treasure_of(s) +
+			"是你拿的，我的副手也是你截的。」\n" + boss_of(s)["intro"]);
 		ob->set("gender", boss_of(s)["gender"]);
 		// 刷新页面后在他逃去的地方重新刷出来：已经跑过一回，不再跑第二回
 		if (stringp(s["boss_at"])) ob->set_temp("yz_fled", 1);
@@ -824,28 +879,51 @@ void begin_stage(object me)
 		tell_object(me, "（点菜单里的「带我去」或输入上面那句，会自动走过去；要先去干别的就 yuanzheng pause。）\n");
 }
 
-// 按已经选过几个天赋往后翻，一关给两点时第二张不会和第一张一模一样
-int talent_base(mapping s, mapping *pool)
+// 抽三张：从这个流派没选过的普通天赋里随机挑，约四分之一的机会把第三张换成一张没拿过的稀有天赋。
+// 抽好的三张存进 s["offer"]，菜单重开、刷新页面都还是这三张，选完才清掉
+mapping *draw_offer(mapping s)
 {
-	return ((arrayp(s["talents"]) ? sizeof(s["talents"]) : 0) * 3) % sizeof(pool);
+	mapping *pool, *left, *rares, *out = ({});
+	string *got = arrayp(s["talents"]) ? s["talents"] : ({});
+	mapping t;
+
+	if (arrayp(s["offer"]) && sizeof(s["offer"])) return s["offer"];
+	pool = talents[s["style"]];
+	if (! arrayp(pool)) pool = talents["fist"];
+	left = filter_array(pool, (: member_array($1["name"], $2) < 0 :), got);
+	if (sizeof(left) < 3) left = pool;
+	while (sizeof(out) < 3 && sizeof(left))
+	{
+		t = left[random(sizeof(left))];
+		out += ({ t });
+		left -= ({ t });
+	}
+	rares = filter_array(rare_talents, (: member_array($1["name"], $2) < 0 :), got);
+	if (sizeof(rares) && (random(4) == 0 || s["force_rare"]))
+	{
+		map_delete(s, "force_rare");
+		out[sizeof(out) - 1] = rares[random(sizeof(rares))];
+	}
+	s["offer"] = out;
+	return out;
 }
 
 void talent_menu(object me)
 {
 	mapping s = state(me), t;
 	mapping *pool;
-	int i, base;
+	int i;
 	string str;
 
 	if (! s) return;
-	pool = talents[s["style"]];
-	if (! arrayp(pool)) pool = talents["fist"];
-	base = talent_base(s, pool);
+	pool = draw_offer(s);
+	me->set_temp("yuanzheng", s);
+	save_run(me);
 	str = ZJOBLONG "选一个天赋（属性点：" + s["points"] + "）\n" ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < sizeof(pool); i++)
 	{
-		t = pool[(base + i) % sizeof(pool)];
-		str += t["name"] + " " + t["desc"] + ":yuanzheng choose " + (i + 1) + ZJSEP;
+		t = pool[i];
+		str += (t["key"] == "rare" ? "★" : "") + t["name"] + " " + t["desc"] + ":yuanzheng choose " + (i + 1) + ZJSEP;
 	}
 	tell_object(me, str + "\n");
 	tell_object(me, "YZ#" + status_line(me) + "\n");
@@ -1133,7 +1211,8 @@ void complete_stage(object me)
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 
-	earned = 6 + (s["stage"] - 1) * 4 + (has_perk(me, "coin") ? 4 : 0) + (int)def["coin"];
+	earned = 6 + (s["stage"] - 1) * 4 + (has_perk(me, "coin") ? 4 : 0) + (int)def["coin"] +
+		(has_rare(s, "coin") ? 8 : 0);
 	s["coin"] = (s["coin"] || 0) + earned;
 	roll_stall(me, s);
 	tell_object(me, HIG "【远征】" + def["title"] + " 完成！得到 " + (1 + (int)def["point"]) +
@@ -1208,9 +1287,10 @@ void enemy_died(object killer, object enemy)
 		{
 			object t = new(YZ_TREASURE);
 			t->set("yz_stage", s["stage"]);
+			t->set_name(HIY + treasure_of(s) + NOR, ({ "treasure", "baowu" }));
 			t->move(me, 1);
 		}
-		tell_object(me, HIY "你从守卫身上摸出一件宝物。带回" +
+		tell_object(me, HIY "你从守卫身上摸出一件宝物「" + treasure_of(s) + "」，正是匪首四处搜罗的东西。带回" +
 			city_of(me)["name"] + "·" + room_name(city_of(me)["inn"]) +
 			"上交（yuanzheng submit）。" NOR "\n");
 		tell_object(me, "  （自动带路：去 " + city_of(me)["inn"] + "）\n");
@@ -1376,6 +1456,17 @@ int on_die(object me)
 		me->set_override("die", (: call_other, __FILE__, "on_die" :));
 		tell_object(me, HIY "免死符烧成一道黄光，替你挡下了这一下。" NOR "\n");
 		return 1;
+	}
+	if (has_rare(s, "burn") && objectp(environment(me)))
+	{
+		// 稀有天赋「玉石俱焚」：倒下前拼掉眼前局内敌人一半气血
+		foreach (object ob in all_inventory(environment(me)))
+		{
+			if (! ob->query("yz_owner") || ob->query("yz_owner") != me->query("id") || ob->query_temp("yz_dead") || ! living(ob)) continue;
+			if (ob->query("qi") > 1) ob->set("qi", ob->query("qi") / 2);
+			if (ob->query("eff_qi") > 1) ob->set("eff_qi", ob->query("eff_qi") / 2);
+			tell_object(me, HIR "你倒下前拼尽最后一口气，" + ob->name() + "也挨了重重一下，伤得不轻！" NOR "\n");
+		}
 	}
 	s["life"] -= 1;
 	s["deaths"] = (s["deaths"] || 0) + 1;
@@ -1731,7 +1822,7 @@ int start(object me, string style, string city)
 	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
 	       "coin":0, "charm":0, "stall":({}),
 	       "order":({0,1,2,3,4}), "planning":1, "tier":tier_of(me),
-	       "boss":random(sizeof(bosses)) ]);
+	       "boss":random(sizeof(bosses)), "treasure":random(sizeof(treasures)) ]);
 	roll_stall(me, s);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
@@ -1808,15 +1899,15 @@ int choose(object me, int n)
 {
 	mapping s = state(me), t;
 	mapping *pool;
-	int base;
+
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (s["points"] < 1) return notify_fail("你没有可用的属性点。\n");
 	if (n < 1 || n > 3) return notify_fail("请选择 1、2 或 3。\n");
-	pool = talents[s["style"]];
-	if (! arrayp(pool)) pool = talents["fist"];
-	base = talent_base(s, pool);
-	t = pool[(base + n - 1) % sizeof(pool)];
+	pool = draw_offer(s);
+	if (n > sizeof(pool)) return notify_fail("请选择 1、2 或 3。\n");
+	t = pool[n - 1];
+	map_delete(s, "offer");
 	apply_talent(me, t);
 	s["talents"] += ({ t["name"] });
 	s["points"] -= 1;

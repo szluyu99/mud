@@ -297,7 +297,8 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng stall'); await page.waitForTimeout(1200);
   check('zjrogue: 局内摊位摆出三件货', /路边的摊子/.test(await text()) && /钱）/.test(await text()) && /铜钱：\d+/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
-  check('zjrogue: first talent follows the style', /起手式/.test(await out()));
+  // 天赋三选一每次随机抽，第一张不再固定是「起手式」
+  check('zjrogue: 选了一个天赋', /你选择了天赋【/.test(await text()), (await text()).slice(-200));
 
   // 二、夺宝：打死守卫拿宝物，回客店上交
   await send(page, 'goto /d/city/nandajie1'); await page.waitForTimeout(2500);
@@ -316,9 +317,11 @@ async function zjrogueExtras(page) {
 
   // 三、寻访：问线人
   await send(page, 'goto /d/city/wumiao'); await page.waitForTimeout(2500);
+  await send(page, 'yuanzheng debugrare'); await page.waitForTimeout(800);
   check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
   check('zjrogue: 线人会透露这局匪首是谁', /这回坐镇的是/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
+  check('zjrogue: 天赋里能抽到★稀有天赋', await until(page, () => /★/.test(document.body.innerText), 8000), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 四、截杀副手（匪首在第四关打完时刷出，先把这局的匪首定成会喊人的啸山虎，打法和原来最接近）
@@ -334,6 +337,7 @@ async function zjrogueExtras(page) {
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
   check('zjrogue: 终局匪首有名有姓（啸山虎）', /啸山虎/.test(await text()), (await text()).slice(-200));
   check('zjrogue: boss killed, all five stages clear', await cmd('kill feishou', /五、终局 完成/, 80000), await out());
+  check('zjrogue: 匪首开场会提起夺宝关拿走的宝物', /是你拿的，我的副手也是你截的/.test(await text()), (await text()).slice(-300));
   // 打完还没结算时打开菜单：曾经在这里越界报错（Array index out of bounds）
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
   check('zjrogue: 五关打完后菜单不报错', /五关已经全部通过/.test(await text()) && ! /Array index|未知错误/.test(await text()), (await text()).slice(-200));

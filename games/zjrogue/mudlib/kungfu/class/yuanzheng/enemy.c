@@ -6,6 +6,10 @@ inherit NPC;
 #define YZ_D "/adm/daemons/yuanzhengd"
 #define YZ_ALLY "/kungfu/class/yuanzheng/helper"
 
+object find_owner();
+int near_dead();
+int owner_rare(object who, string id);
+
 void create()
 {
 	::create();
@@ -112,9 +116,35 @@ varargs int receive_damage(string type, int damage, object who)
 		add_temp("apply/attack", 10);
 		message_vision(HIR "$N把牙一咬，眼睛红了，出手一下子狠了起来！\n" NOR, this_object());
 	}
-	if (type == "qi" && query("qi") * 4 <= query("max_qi"))
+	// 稀有天赋「嗜血」：打中回一成伤害的气血
+	if (type == "qi" && objectp(who) && userp(who) && damage > 0 && owner_rare(who, "leech"))
+	{
+		int heal = damage / 10;
+		if (heal < 1) heal = 1;
+		who->set("eff_qi", who->query("eff_qi") + heal > who->query("max_qi") ? who->query("max_qi") : who->query("eff_qi") + heal);
+		who->set("qi", who->query("qi") + heal > who->query("eff_qi") ? who->query("eff_qi") : who->query("qi") + heal);
+	}
+	if (type == "qi" && near_dead())
 		die(who);
 	return r;
+}
+
+// 玩家的局里有没有这张稀有天赋
+int owner_rare(object who, string id)
+{
+	mapping s;
+	if (! objectp(who) || ! mapp(s = YZ_D->state(who))) return 0;
+	return YZ_D->has_rare(s, id);
+}
+
+// 平时四分之一血就倒；有「看破」时三成血就倒
+int near_dead()
+{
+	object owner = find_owner();
+	if (query("qi") <= 0) return 0;
+	if (objectp(owner) && owner_rare(owner, "break"))
+		return query("qi") * 10 <= query("max_qi") * 3;
+	return query("qi") * 4 <= query("max_qi");
 }
 
 int style_damage(string type, int damage, object who)
@@ -222,7 +252,7 @@ void heart_beat()
 	// 给正在跟我打的玩家记一笔：他这几秒里倒下，就是远征里的打斗（见 yuanzhengd by_hand）
 	foreach (who in query_enemy())
 		if (objectp(who) && userp(who)) who->set_temp("yz_fought_at", time());
-	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
+	if (near_dead())
 		die(query_last_damage_from());
 	// 副手三成血开跑，但离倒下只差几拳的时候就不跑了，否则快到手的窗口一下全白费。
 	// 逃跑这条路得撞上两次才跑得掉（撞一次摔一跤、掉三成血），玩家至少有把手拦一拦。
