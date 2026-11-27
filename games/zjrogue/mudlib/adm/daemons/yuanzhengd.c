@@ -4,6 +4,8 @@
 
 #define MAX_LIFE 3
 #define MAX_TIER 5
+
+int ach_add(object me, string k);
 #define BACK_ROOM "/d/city/kedian"
 #define YZ_ENEMY "/kungfu/class/yuanzheng/enemy"
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
@@ -491,6 +493,7 @@ void apply_talent(object me, mapping t)
 	{
 		if (! mapp(s["rare"])) s["rare"] = ([]);
 		s["rare"][v] = 1;
+		ach_add(me, "rare_" + v);
 		if (v == "life")
 		{
 			s["life"] += 1;
@@ -1095,6 +1098,7 @@ int resolve_event(object me, int n)
 	if (n < 1 || n > 2) return notify_fail("请选择 1 或 2。\n");
 	id = s["event"]["id"];
 	map_delete(s, "event");
+	ach_add(me, "ev_" + id);
 
 	switch (id)
 	{
@@ -1833,6 +1837,7 @@ string overview(object me)
 	if (me->query("yuanzheng/max_tier"))
 		str += "\n难度：下一局「" + tier_name(tier_of(me)) + "」，最高解锁「" + tier_name(me->query("yuanzheng/max_tier")) + "」";
 	str += "\n已买特权：" + (sizeof(got) ? implode(got, "、") : "还没有（yuanzheng shop）");
+	str += "\n图鉴：" + ach_total(me) + "/" + ach_max() + "（yuanzheng book）";
 	return str;
 }
 
@@ -2163,6 +2168,92 @@ string tally(string *names)
 	return implode(out, "、");
 }
 
+// ---------- 远征图鉴：通关过的城、流派、匪首、难度，见过的遭遇和稀有天赋 ----------
+// 存在 yuanzheng/ach 里（局外，跟着角色走）。第一次通关某座城/流派/匪首/难度给 5 点声望。
+int ach_has(object me, string k)
+{
+	return mapp(me->query("yuanzheng/ach")) && me->query("yuanzheng/ach")[k];
+}
+
+int ach_add(object me, string k)
+{
+	mapping a = me->query("yuanzheng/ach");
+	if (! mapp(a)) a = ([]);
+	if (a[k]) return 0;
+	a[k] = 1;
+	me->set("yuanzheng/ach", a);
+	return 1;
+}
+
+// 通关后记下这一局的城、流派、匪首、难度，返回新点亮的名字
+string *ach_clear(object me, mapping s)
+{
+	string *got = ({});
+	mapping c = cities[s["city"]];
+
+	if (mapp(c) && ach_add(me, "city_" + s["city"])) got += ({ c["name"] });
+	if (mapp(styles[s["style"]]) && ach_add(me, "style_" + s["style"])) got += ({ styles[s["style"]]["name"] });
+	if (ach_add(me, "boss_" + boss_of(s)["id"])) got += ({ boss_of(s)["name"] });
+	if (ach_add(me, "tier_" + s["tier"])) got += ({ "难度" + tier_name(s["tier"]) });
+	return got;
+}
+
+// 图鉴里一类东西点亮了几个：返回「名字✓」或「？？？」
+string ach_line(object me, string title, string prefix, string *ids, string *names)
+{
+	string *row = ({});
+	int i, n = 0;
+
+	for (i = 0; i < sizeof(ids); i++)
+		if (ach_has(me, prefix + ids[i])) { row += ({ names[i] + "✓" }); n++; }
+		else row += ({ "？？？" });
+	return title + "（" + n + "/" + sizeof(ids) + "）：" + implode(row, "　");
+}
+
+int ach_total(object me)
+{
+	mapping a = me->query("yuanzheng/ach");
+	return mapp(a) ? sizeof(a) : 0;
+}
+
+int ach_max()
+{
+	return sizeof(cities) + sizeof(styles) + sizeof(bosses) + (MAX_TIER + 1) +
+		sizeof(event_pool()) + sizeof(rare_talents);
+}
+
+int book(object me)
+{
+	string *ids, *names, str;
+	mapping *pool;
+	int i;
+
+	str = ZJOBLONG "远征图鉴（" + ach_total(me) + "/" + ach_max() + "）\n"
+		"通关点亮城、流派、匪首、难度，每样第一次通关多给 5 点声望；遭遇和稀有天赋见过就记下。\n";
+	ids = ({ "city", "suzhou", "hangzhou", "quanzhou" });
+	names = map(ids, (: cities[$1]["name"] :));
+	str += ach_line(me, "城", "city_", ids, names) + "\n";
+	ids = ({ "sword", "fist", "blade" });
+	names = map(ids, (: styles[$1]["name"] :));
+	str += ach_line(me, "流派", "style_", ids, names) + "\n";
+	ids = map(bosses, (: $1["id"] :));
+	names = map(bosses, (: $1["name"] :));
+	str += ach_line(me, "匪首", "boss_", ids, names) + "\n";
+	ids = ({}); names = ({});
+	for (i = 0; i <= MAX_TIER; i++) { ids += ({ "" + i }); names += ({ tier_name(i) }); }
+	str += ach_line(me, "难度", "tier_", ids, names) + "\n";
+	pool = event_pool();
+	ids = ({}); names = ({});
+	for (i = 0; i < sizeof(pool); i++) { ids += ({ "" + i }); names += ({ pool[i]["title"] }); }
+	str += ach_line(me, "路上遭遇", "ev_", ids, names) + "\n";
+	ids = map(rare_talents, (: $1["value"] :));
+	names = map(rare_talents, (: $1["name"] :));
+	str += ach_line(me, "稀有天赋", "rare_", ids, names) + "\n";
+	str += ZJOBACTS2 + ZJMENUF(2, 2, 8, 30) + "回远征菜单:yuanzheng" ZJSEP;
+	write(str + "\n");
+	return 1;
+}
+
 int settle(object me)
 {
 	mapping s = state(me);
@@ -2170,9 +2261,13 @@ int settle(object me)
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
 	if (s["stage"] < sizeof(stages)) return notify_fail("还有关卡没有通过，不能结算。\n");
+	string *fresh;
+
 	gain = 8 + sizeof(s["talents"]) * 2 + (s["life"] - 1) * 3;
 	if (has_perk(me, "gain")) gain += gain * 20 / 100;
 	if (s["tier"] > 0) gain += gain * s["tier"] * 50 / 100;
+	fresh = ach_clear(me, s);
+	gain += sizeof(fresh) * 5;
 	give_spoil(me, s["style"]);
 	me->set("yuanzheng/last_style", s["style"]);
 	me->add("yuanzheng/prestige", gain);
@@ -2187,6 +2282,8 @@ int settle(object me)
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
 		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n" +
 		"想再来一局的话，点顶栏重开。\n");
+	if (sizeof(fresh))
+		tell_object(me, HIY "图鉴新点亮：" + implode(fresh, "、") + "（每样 +5 声望，已算在上面）。看图鉴：yuanzheng book" NOR "\n");
 	if (s["tier"] >= me->query("yuanzheng/max_tier") && s["tier"] < MAX_TIER)
 	{
 		me->set("yuanzheng/max_tier", s["tier"] + 1);

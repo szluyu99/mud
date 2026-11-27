@@ -47,6 +47,7 @@ int menu(object me)
 		str += "放弃远征:yuanzheng abandon" ZJSEP;
 	}
 	str += "远征商店:yuanzheng shop" ZJSEP;
+	str += "远征图鉴（" + YZ_D->ach_total(me) + "/" + YZ_D->ach_max() + "）:yuanzheng book" ZJSEP;
 	if (s)
 		str += "离开江湖（局里的目标先收起来）:yuanzheng pause" ZJSEP;
 	write(str + "\n");
@@ -104,6 +105,7 @@ int main(object me, string arg)
 	case "stall":	return YZ_D->stall(me);
 	case "where":	return YZ_D->where(me);
 	case "shop":	return YZ_D->shop(me), 1;
+	case "book":	return YZ_D->book(me);
 	case "debugsp":	return YZ_D->debug_sp(me, 0);
 	}
 	return notify_fail("用法：yuanzheng（菜单）、start sword|fist|blade、plan 1-3、status、event 1|2、choose 1-3、submit、settle、abandon、shop、buy 1-4。\n");
@@ -117,6 +119,7 @@ int help(object me)
 	      "每局的城是随机挑的（扬州、苏州、杭州、泉州），五关都在那一带；\n"
 	      "开局先看悬赏榜，挑一条路（yuanzheng plan 1|2|3）决定先做哪一桩；\n"
 	      "五关全过后 yuanzheng settle 结算远征声望，声望可以在 yuanzheng shop 里换常驻特权。\n"
+	      "yuanzheng book 看远征图鉴：每座城、每个流派、每个匪首、每档难度第一次通关多给 5 点声望。\n"
 	      "远征途中可以照常做别的事（yuanzheng pause 把局里的目标先收起来）；\n"
 	      "身上带着局内的加成和借来的兵器，status 里列得出来，结算时一块收回。\n");
 	return 1;

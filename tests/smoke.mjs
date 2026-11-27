@@ -348,6 +348,9 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);
   check('zjrogue: 五关打完后菜单不报错', /五关已经全部通过/.test(await text()) && ! /Array index|未知错误/.test(await text()), (await text()).slice(-200));
   check('zjrogue: settle grants 远征声望', await cmd('yuanzheng settle', /获得远征声望 \d+ 点/, 20000), await out());
+  check('zjrogue: 第一次通关点亮图鉴', /图鉴新点亮：扬州、剑客/.test(await text()), (await text()).slice(-300));
+  await send(page, 'yuanzheng book'); await page.waitForTimeout(1200);
+  check('zjrogue: 图鉴里扬州、剑客打了勾', /城（1\/4）：扬州✓/.test(await text()) && /流派（1\/3）：剑客✓/.test(await text()), (await text()).slice(-300));
   check('zjrogue: 结算后顶栏换成「再来一局」入口', await until(page, () => /再来一局/.test(document.getElementById('yzbar')?.textContent || ''), 8000),
     await page.evaluate(() => document.getElementById('yzbar')?.textContent || '(无顶栏)'));
   await waitText(/获得远征声望 \d+ 点/, 15000);
@@ -357,7 +360,9 @@ async function zjrogueExtras(page) {
     const base = m ? 8 + 4 * 2 + ((+m[1]) - 1) * 3 : 0;
     check('zjrogue: settle shows 本局统计', await waitText(/本局用时 \d+/, 5000), (await text()).slice(-160));
   check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
-  check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5), m ? m[0] : (await text()).slice(-120));
+    // 第一次通关还会点亮图鉴：城、流派、匪首、难度各 +5
+    const fresh = ((/图鉴新点亮：([^（]*)/.exec(await text()) || [, ''])[1].split('、').filter(Boolean)).length;
+  check('zjrogue: 名望让结算多两成', !!m && +m[2] === base + Math.floor(base / 5) + fresh * 5, m ? m[0] + ' 图鉴 ' + fresh : (await text()).slice(-120));
   check('zjrogue: 打通一局解锁下一档难度', /解锁新难度「险一」/.test(await text()), (await text()).slice(-160));
   }
   await send(page, 'yuanzheng status'); await page.waitForTimeout(1500);
