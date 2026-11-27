@@ -287,11 +287,25 @@ int debug_tier(object me, int n)
 
 // 巫师调试：指定这一局的匪首（从 0 数），终局已刷出来的话再 jump 5 重刷
 // 巫师调试：下一张天赋三选一里必带一张稀有天赋
-int debug_rare(object me)
+varargs int debug_rare(object me, string id)
 {
 	mapping s = state(me);
 	if (wiz_level(me) < 5 && ! wizardp(me)) return notify_fail("只有巫师能用。\n");
 	if (! s) return notify_fail("你现在不在远征里。\n");
+	if (stringp(id))
+	{
+		// 直接给一张稀有天赋，用来实测效果；burnhit 模拟「玉石俱焚」砍过一刀后重刷
+		if (id == "burnhit") s["burn_hit"] = 1;
+		else
+		{
+			if (! mapp(s["rare"])) s["rare"] = ([]);
+			s["rare"][id] = 1;
+		}
+		me->set_temp("yuanzheng", s);
+		save_run(me);
+		tell_object(me, "（调试）给你稀有天赋 " + id + "。\n");
+		return 1;
+	}
 	s["force_rare"] = 1;
 	map_delete(s, "offer");
 	save_run(me);
@@ -756,8 +770,18 @@ void spawn(object me, int stage)
 		int w = ob->query("max_qi") * 8 / 10;
 		ob->set("max_qi", w); ob->set("eff_qi", w); ob->set("qi", w);
 	}
+	if (s["burn_hit"])
+	{
+		map_delete(s, "burn_hit");
+		ob->set("eff_qi", ob->query("max_qi") / 2);
+		ob->set("qi", ob->query("max_qi") / 2);
+		ob->set_temp("yz_burned", 1);
+	}
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。" NOR "\n", ob);
+	if (ob->query_temp("yz_burned"))
+		// 重刷时玩家多半还在落脚处，用 tell_object 直接告诉他
+		tell_object(me, HIY "（" + ob->name() + "身上还带着上回你拼死砍下的伤，只剩一半气血。）" NOR "\n");
 	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill " + def["eid"] + "）" NOR "\n");
 
 }
@@ -1466,6 +1490,8 @@ int on_die(object me)
 			if (ob->query("qi") > 1) ob->set("qi", ob->query("qi") / 2);
 			if (ob->query("eff_qi") > 1) ob->set("eff_qi", ob->query("eff_qi") / 2);
 			tell_object(me, HIR "你倒下前拼尽最后一口气，" + ob->name() + "也挨了重重一下，伤得不轻！" NOR "\n");
+			// 倒下后这一关会清场重刷，记一笔，让重刷出来的那个带着这一下的伤
+			s["burn_hit"] = 1;
 		}
 	}
 	s["life"] -= 1;

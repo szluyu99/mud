@@ -75,6 +75,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "debugevent %d", n) == 1) return YZ_D->debug_event(me, n);
 	if (sscanf(arg, "debugboss %d", n) == 1) return YZ_D->debug_boss(me, n);
 	if (arg == "debugrare") return YZ_D->debug_rare(me);
+	if (sscanf(arg, "debugrare %s", sub) == 1) return YZ_D->debug_rare(me, sub);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)
