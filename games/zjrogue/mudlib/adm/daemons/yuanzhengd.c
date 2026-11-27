@@ -34,6 +34,29 @@ mapping *stages = ({
 	   "hint":"迎战匪首，赢下这一局（kill feishou）", "boss":1 ])
 });
 
+// 终局匪首每局换一个，各有一手：开局随机定下，线人和副手会提前漏口风
+mapping *bosses = ({
+	([ "id":"shout", "name":"啸山虎", "gender":"男性",
+	   "tip":"这回坐镇的是啸山虎，手下人多，打起来他会一直喊人来帮；下手要快，别拖。",
+	   "intro":"啸山虎一拍胸脯：「就是你搅了老子的场子？弟兄们，抄家伙！」" ]),
+	([ "id":"poison", "name":"毒蝎娘子", "gender":"女性",
+	   "tip":"这回坐镇的是毒蝎娘子，指甲里藏着毒，挨久了毒气上身，越拖越亏。",
+	   "intro":"毒蝎娘子掩嘴一笑：「东西拿了，人也截了，胆子不小。姐姐陪你玩玩。」" ]),
+	([ "id":"flee", "name":"滑头李三", "gender":"男性",
+	   "tip":"这回坐镇的是滑头李三，最是怕死，打到一半准要开溜，到时候就得追。",
+	   "intro":"滑头李三眼珠乱转：「有话好说……你先别动手，咱们讲讲价钱？」" ]),
+	([ "id":"dian", "name":"铁指判官", "gender":"男性",
+	   "tip":"这回坐镇的是铁指判官，一手点穴功夫，被点中要愣上一会儿，别贴着他硬拼。",
+	   "intro":"铁指判官竖起两根手指：「我这对指头，专点不长眼的人。」" ]),
+});
+
+mapping boss_of(mapping s)
+{
+	int i = mapp(s) && intp(s["boss"]) ? s["boss"] : 0;
+
+	return bosses[(i >= 0 && i < sizeof(bosses)) ? i : 0];
+}
+
 // 每局随机挑一座城：目标、线人、匪首都在那座城里，不再每局都跑同一套扬州地点
 mapping cities = ([
 	"city": ([ "name":"扬州", "kill":"/d/city/guangchang", "item":"/d/city/nandajie1",
@@ -239,6 +262,20 @@ int debug_tier(object me, int n)
 	return 1;
 }
 
+// 巫师调试：指定这一局的匪首（从 0 数），终局已刷出来的话再 jump 5 重刷
+int debug_boss(object me, int n)
+{
+	mapping s = state(me);
+
+	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (n < 0 || n >= sizeof(bosses)) return notify_fail("没有这个匪首。\n");
+	s["boss"] = n;
+	me->set_temp("yuanzheng", s);
+	tell_object(me, "（调试）这一局的匪首换成" + bosses[n]["name"] + "。\n");
+	return 1;
+}
+
 // 巫师调试：把眼前的遭遇换成第 n 件（从 0 数）
 int debug_event(object me, int n)
 {
@@ -357,8 +394,9 @@ string status_line(object me)
 	if (! s) return "";
 	if (! mapp(def = cur_stage(me)))
 		return "远征：五关都过了，可以结算（yuanzheng）";
-	return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：" + def["title"] + "　命 " + s["life"] + "/" + s["max_life"] +
-		"　钱 " + (s["coin"] || 0);
+	return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：" + def["title"] +
+		(def["type"] == "boss" && stringp(s["boss_at"]) ? "（追到" + room_name(s["boss_at"]) + "）" : "") +
+		"　命 " + s["life"] + "/" + s["max_life"] + "　钱 " + (s["coin"] || 0);
 }
 
 mapping state(object me)
@@ -506,6 +544,12 @@ varargs void clean_world(object me, int stage)
 	object ob, *kill = ({});
 
 	if (undefinedp(stage)) stage = -1;
+	// 匪首被清掉（倒下、暂停、跳关）后再刷就回原来的地点，不守着他上回逃去的那处
+	if (mapp(state(me)) && stringp(state(me)["boss_at"]))
+	{
+		map_delete(state(me), "boss_at");
+		save_run(me);
+	}
 
 	foreach (ob in children(YZ_ENEMY))
 		if (ob && ob->query("yz_owner") == me->query("id") &&
@@ -537,7 +581,48 @@ string stage_room(object me, mapping def)
 {
 	mapping c = city_of(me);
 
+	mapping s = state(me);
+
+	if (mapp(s) && mapp(def) && def["type"] == "boss" && stringp(s["boss_at"]))
+		return s["boss_at"];
 	return (c && stringp(def["key"])) ? c[def["key"]] : "/d/city/guangchang";
+}
+
+// 滑头李三开溜时换去的地方：本城别的关卡地点里挑一个，不挑他现在待的那处
+string flee_room(object me, string here)
+{
+	mapping c = city_of(me);
+	string *rooms = ({});
+
+	if (! mapp(c)) return 0;
+	foreach (string k in ({ "kill", "item", "ask", "street" }))
+	{
+		object r;
+		// 线人待的武庙、马厩是不许动手的地方，逃到那里就打不成了
+		if (! stringp(c[k]) || c[k] == here || member_array(c[k], rooms) >= 0) continue;
+		if (! objectp(r = load_object(c[k])) || r->query("no_fight")) continue;
+		rooms += ({ c[k] });
+	}
+	return sizeof(rooms) ? rooms[random(sizeof(rooms))] : 0;
+}
+
+void boss_moved(object me, string room)
+{
+	mapping s;
+
+	if (! objectp(me) || ! (s = state(me))) return;
+	s["boss_at"] = room;
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, HIY "【远征】" + boss_of(s)["name"] + "逃到了" + city_of(me)["name"] + "·" +
+		room_name(room) + "，追上去！" NOR "\n");
+	tell_object(me, "  （自动带路：去 " + room + "）\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
+string boss_tip(object me)
+{
+	return boss_of(state(me))["tip"];
 }
 
 string room_name(string file)
@@ -578,8 +663,18 @@ void spawn(object me, int stage)
 	ob = new(YZ_ENEMY);
 	ob->setup_from(me, stage, def["type"] == "boss" ? "boss" :
 		(def["type"] == "item" ? "guard" : (def["key"] == "street" ? "vice" : "thug")),
-		def["who"], def["eid"]);
+		def["type"] == "boss" ? boss_of(s)["name"] : def["who"], def["eid"]);
 	ob->set("yz_style", style_of(me));
+	ob->set("yz_tier", s["tier"]);
+	ob->set("yz_boss_name", boss_of(s)["name"]);
+	if (def["type"] == "boss")
+	{
+		ob->set("yz_boss", boss_of(s)["id"]);
+		ob->set("yz_intro", boss_of(s)["intro"]);
+		ob->set("gender", boss_of(s)["gender"]);
+		// 刷新页面后在他逃去的地方重新刷出来：已经跑过一回，不再跑第二回
+		if (stringp(s["boss_at"])) ob->set_temp("yz_fled", 1);
+	}
 	// 「被追杀的书生」指点过旧伤：这一个敌人少两成血，用掉就没了
 	if (s["weak"])
 	{
@@ -1244,7 +1339,7 @@ int by_hand(object me)
 	if (in_battle(me)) return 1;
 	// 局内对手刚倒下、刚被收走，房间里已经没人了，但这一下伤确实是他打的
 	if (time() - (int)me->query_temp("yz_fought_at") <= 5) return 1;
-	if (objectp(who = me->query_temp("last_damage_from")) && objectp(environment(who)) &&
+	if (objectp(who = me->query_last_damage_from()) && objectp(environment(who)) &&
 	    environment(who) == environment(me))
 		return 1;
 	return 0;
@@ -1635,7 +1730,8 @@ int start(object me, string style, string city)
 	       "buff":([]), "raw":([]), "skills":([]), "style":style, "started":time(), "deaths":0,
 	       "city":(mapp(cities[city]) ? city : keys(cities)[random(sizeof(cities))]),
 	       "coin":0, "charm":0, "stall":({}),
-	       "order":({0,1,2,3,4}), "planning":1, "tier":tier_of(me) ]);
+	       "order":({0,1,2,3,4}), "planning":1, "tier":tier_of(me),
+	       "boss":random(sizeof(bosses)) ]);
 	roll_stall(me, s);
 	// 流派底子：远征的对手本来就不弱，给的这点加成只是让人打得动
 	s["buff"]["apply/attack"] = 20 + (has_perk(me, "atk") ? 10 : 0);
@@ -1701,7 +1797,7 @@ int start(object me, string style, string city)
 		string plan = "";
 		int k;
 		for (k = 0; k < sizeof(stages); k++)
-			plan += (k ? "，" : "") + stages[k]["title"] + "：" + stages[k]["who"];
+			plan += (k ? "，" : "") + stages[k]["title"] + "：" + (stages[k]["type"] == "boss" ? boss_of(s)["name"] : stages[k]["who"]);
 		tell_object(me, "（耳目打听到这一局五关要打的人：" + plan + "）\n");
 	}
 	brief_menu(me);

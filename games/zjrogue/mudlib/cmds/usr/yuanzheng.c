@@ -73,6 +73,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "tier %d", n) == 1) return YZ_D->set_tier(me, n);
 	if (sscanf(arg, "debugtier %d", n) == 1) return YZ_D->debug_tier(me, n);
 	if (sscanf(arg, "debugevent %d", n) == 1) return YZ_D->debug_event(me, n);
+	if (sscanf(arg, "debugboss %d", n) == 1) return YZ_D->debug_boss(me, n);
 	if (sscanf(arg, "%s %d", sub, n) == 2 && sub == "choose") return YZ_D->choose(me, n);
 
 	switch (arg)

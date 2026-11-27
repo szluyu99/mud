@@ -317,10 +317,12 @@ async function zjrogueExtras(page) {
   // 三、寻访：问线人
   await send(page, 'goto /d/city/wumiao'); await page.waitForTimeout(2500);
   check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
+  check('zjrogue: 线人会透露这局匪首是谁', /这回坐镇的是/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
-  // 四、截杀副手
+  // 四、截杀副手（匪首在第四关打完时刷出，先把这局的匪首定成会喊人的啸山虎，打法和原来最接近）
+  await send(page, 'yuanzheng debugboss 0'); await page.waitForTimeout(800);
   await send(page, 'goto /d/city/beimen'); await page.waitForTimeout(2500);
   // 副手血到三成会掉头跑，跑了这一关得重来；这里要么打死，要么认下「人跑了」这一手
   check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成|人跑了，这一关得重来/, 60000),
@@ -328,8 +330,9 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
-  // 五、终局：匪首
+  // 五、终局：匪首每局随机一个，各有一手
   await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
+  check('zjrogue: 终局匪首有名有姓（啸山虎）', /啸山虎/.test(await text()), (await text()).slice(-200));
   check('zjrogue: boss killed, all five stages clear', await cmd('kill feishou', /五、终局 完成/, 80000), await out());
   // 打完还没结算时打开菜单：曾经在这里越界报错（Array index out of bounds）
   await send(page, 'yuanzheng'); await page.waitForTimeout(1500);

@@ -177,14 +177,17 @@ void guard_shout()
 	if (! objectp(this_object()) || query_temp("yz_dead")) return;
 	if (! objectp(room = environment(this_object()))) return;
 	// 只招呼真动手的玩家：帮闲把自己人当仇家，会越喊越多，把场子搅烂
-	who = query_temp("last_damage_from");
+	who = query_last_damage_from();
 	if (! objectp(who) || ! userp(who)) return;
 	if (query_temp("yz_shout") && time() - query_temp("yz_shout") < 7) return;
 	set_temp("yz_shout", time());
 	// 一关最多喊两个帮手，人手也是有限的
 	allies = filter_array(all_inventory(room), (: objectp($1) && $1->query("yz_ally") :));
 	if (sizeof(allies) >= 2) return;
-	message_vision(HIR "$N扯着嗓子喊了起来：「来人哪！有人要抢东西！」\n" NOR, this_object());
+	if (query("yz_kind") == "boss")
+		message_vision(HIR "$N一声呼哨：「弟兄们，都给我上！」\n" NOR, this_object());
+	else
+		message_vision(HIR "$N扯着嗓子喊了起来：「来人哪！有人要抢东西！」\n" NOR, this_object());
 	ob = new(YZ_ALLY);
 	if (! objectp(ob)) return;
 	ob->setup_from_ally(query("yz_owner"), query("yz_stage"));
@@ -220,10 +223,10 @@ void heart_beat()
 	foreach (who in query_enemy())
 		if (objectp(who) && userp(who)) who->set_temp("yz_fought_at", time());
 	if (query("qi") > 0 && query("qi") * 4 <= query("max_qi"))
-		die(query_temp("last_damage_from"));
+		die(query_last_damage_from());
 	// 副手三成血开跑，但离倒下只差几拳的时候就不跑了，否则快到手的窗口一下全白费。
 	// 逃跑这条路得撞上两次才跑得掉（撞一次摔一跤、掉三成血），玩家至少有把手拦一拦。
-	who = query_temp("last_damage_from");
+	who = query_last_damage_from();
 	if (query("yz_kind") == "vice" && objectp(who) && query("qi") * 10 <= query("max_qi") * 3 && query("qi") * 20 > query("max_qi"))
 	{
 		if (! query_temp("yz_escape") && userp(who) && environment(who) == environment(this_object()))
@@ -235,8 +238,87 @@ void heart_beat()
 		else
 			vice_fled();
 	}
-	if (query("yz_kind") == "guard" && objectp(query_temp("last_damage_from")))
+	if (query("yz_kind") == "guard" && objectp(query_last_damage_from()))
 		guard_shout();
+	if (query("yz_kind") == "boss")
+	{
+		object owner;
+		// 逃走的匪首被追上就先动手：玩家追过来时常常只剩三成血，
+		// 自己按「杀死」会被「你已经没有多余力气战斗了」挡住，两边就干站着
+		if (query_temp("yz_fled") && ! is_fighting() && objectp(owner = find_owner()) &&
+		    environment(owner) == environment(this_object()))
+		{
+			message_vision(HIR "$N见躲不过去，咬牙朝$n扑了过来！\n" NOR, this_object(), owner);
+			kill_ob(owner);
+			owner->kill_ob(this_object());
+		}
+		boss_trick();
+	}
+}
+
+// ---------- 终局匪首各有一手（yz_boss，见 yuanzhengd bosses） ----------
+// 啸山虎：和守卫一样喊人；毒蝎娘子：隔一阵毒气上身；滑头李三：半血开溜，换个地方再打；
+// 铁指判官：隔一阵点穴，被点中的人愣两下。
+object boss_target()
+{
+	// 正在跟我打、又和我在同一处的玩家（last_damage_from 是 damage.c 的 nosave 变量，不在 temp 里）
+	foreach (object who in query_enemy())
+		if (objectp(who) && userp(who) && environment(who) == environment(this_object()))
+			return who;
+	return 0;
+}
+
+void boss_trick()
+{
+	string kind = query("yz_boss");
+	object who, room, owner;
+	int t = time(), n;
+
+	if (! stringp(kind) || ! objectp(who = boss_target())) return;
+	// 开场白放在头一回交手：刷出来时玩家多半还在路上，听不见
+	if (! query_temp("yz_said") && stringp(query("yz_intro")))
+	{
+		set_temp("yz_said", 1);
+		tell_room(environment(this_object()), HIY + query("yz_intro") + "\n" NOR);
+	}
+	if (kind == "shout")
+	{
+		guard_shout();
+		return;
+	}
+	if (kind == "poison")
+	{
+		if (t - query_temp("yz_trick") < 6) return;
+		set_temp("yz_trick", t);
+		n = who->query("max_qi") * 4 / 100 + query("yz_stage") * 2 + query("yz_tier") * 3;
+		message_vision(HIG "$N指尖一划，$n伤口发黑，毒气往上走了一截！\n" NOR, this_object(), who);
+		who->receive_damage("qi", n, this_object());
+		return;
+	}
+	if (kind == "dian")
+	{
+		if (t - query_temp("yz_trick") < 9) return;
+		set_temp("yz_trick", t);
+		message_vision(HIM "$N两指一并，点在$n肩井穴上，$n半边身子一麻！\n" NOR, this_object(), who);
+		who->start_busy(2);
+		return;
+	}
+	if (kind == "flee" && ! query_temp("yz_fled") && query("qi") * 2 <= query("max_qi"))
+	{
+		string to;
+
+		if (! objectp(room = environment(this_object()))) return;
+		owner = find_owner();
+		to = objectp(owner) ? YZ_D->flee_room(owner, base_name(room)) : 0;
+		if (! stringp(to) || ! objectp(load_object(to))) return;
+		set_temp("yz_fled", 1);
+		remove_all_killer();
+		remove_all_enemy(1);
+		tell_room(room, HIY "滑头李三虚晃一招，撒腿就跑：「好汉饶命，后会有期！」\n" NOR, ({ this_object() }));
+		move(to);
+		tell_room(environment(this_object()), HIY "滑头李三气喘吁吁地跑了过来，四下张望。\n" NOR, ({ this_object() }));
+		if (objectp(owner)) YZ_D->boss_moved(owner, to);
+	}
 }
 
 object find_owner()
@@ -278,6 +360,9 @@ void die(object killer)
 	if (! objectp(killer)) killer = find_owner();
 	if (objectp(env))
 		tell_room(env, HIR + me->query("name") + HIR "闷哼一声，倒了下去。\n" NOR, ({ me }));
+	if (objectp(env) && query("yz_kind") == "vice" && stringp(query("yz_boss_name")))
+		tell_room(env, HIY "副手临倒下还啐了一口：「" + query("yz_boss_name") +
+			"不会放过你的……」\n" NOR, ({ me }));
 	YZ_D->enemy_died(killer, me);
 	call_out("vanish", 1);
 }

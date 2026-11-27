@@ -41,7 +41,8 @@ mixed accept_ask(object me, string topic)
 		return 0;
 	if (! objectp(me) || ! userp(me)) return 0;
 	YZ_D->ask_done(me, this_object());
-	return "匪首手下有个副手，这两天在城门一带转悠；先把他截下，匪首就成了光杆。";
+	return "匪首手下有个副手，这两天在城门一带转悠；先把他截下，匪首就成了光杆。" +
+		YZ_D->boss_tip(me);
 }
 
 void unconcious() { }
