@@ -239,6 +239,20 @@ int debug_tier(object me, int n)
 	return 1;
 }
 
+// 巫师调试：把眼前的遭遇换成第 n 件（从 0 数）
+int debug_event(object me, int n)
+{
+	mapping s = state(me);
+
+	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (n < 0 || n >= sizeof(event_pool())) return notify_fail("没有这件事。\n");
+	s["event"] = ([ "id":n ]);
+	me->set_temp("yuanzheng", s);
+	event_menu(me);
+	return 1;
+}
+
 void create()
 {
 	seteuid(getuid());
@@ -566,6 +580,12 @@ void spawn(object me, int stage)
 		(def["type"] == "item" ? "guard" : (def["key"] == "street" ? "vice" : "thug")),
 		def["who"], def["eid"]);
 	ob->set("yz_style", style_of(me));
+	// 「被追杀的书生」指点过旧伤：这一个敌人少两成血，用掉就没了
+	if (s["weak"])
+	{
+		map_delete(s, "weak");
+		ob->set("yz_weak", 1);
+	}
 	if (s["tier"] > 0)
 	{
 		// 险四、险五每档涨得慢一些：原来险五五局只赢一局，全死在终局匪首手里
@@ -580,6 +600,11 @@ void spawn(object me, int stage)
 		// 取整后是 0，险五的匪首也几乎碰不到玩家。补到三万起，敌人才真正打得中人
 		// （险一约五成，险五的后两关约七成）；敌人躲闪的技能是 0，走另一条分支，不变。
 		ob->set("combat_exp", 25000 + s["tier"] * 5000 - over * 2500);
+	}
+	if (ob->query("yz_weak"))
+	{
+		int w = ob->query("max_qi") * 8 / 10;
+		ob->set("max_qi", w); ob->set("eff_qi", w); ob->set("qi", w);
 	}
 	ob->move(room);
 	message_vision(HIR "$N" HIR "横着走了过来，堵在你面前。" NOR "\n", ob);
@@ -743,7 +768,57 @@ mapping *event_pool()
 		   "opts":({ "帮他包扎（此后出手更狠，攻击 +10）", "摸走他的镖（得 15 点声望）" }) ]),
 		([ "title":"赌坊摊子", "desc":"树下摆着一个赌摊，摊主摇着骰子招呼你。",
 		   "opts":({ "押一把（一半机会得 10 点声望，一半掉两成气血）", "走开（回一点气血）" }) ]),
+		([ "title":"被追杀的书生", "desc":"一个书生跌跌撞撞跑过来，后面三个汉子提着棍子追，嘴里喊着「欠债还钱」。",
+		   "opts":({ "替他挡一阵（掉两成气血；他说出下一个对头的旧伤，下一关敌人少两成血）", "把他交出去（得 12 枚铜钱，声望 -3）" }) ]),
+		([ "title":"卖艺的老头", "desc":"街角一个老头耍着一套刀，围观的人稀稀拉拉，他收刀抱拳：「哪位赏脸喂两招？」",
+		   "opts":({ "花 10 枚铜钱学一手（伤害 +10）", "上去过两招（掉一成气血，攻击 +6）" }) ]),
+		([ "title":"算命先生", "desc":"树下坐着个瞎眼的算命先生，竹竿上挂着「铁口直断」，冲你招手。",
+		   "opts":({ "求一道平安符（花 8 枚铜钱，下一次倒下不扣命）", "掀了他的摊（得 6 枚铜钱，他在你背后念叨了一句）" }) ]),
+		([ "title":"山贼设卡", "desc":"山道上横着一根木头，两个山贼抱着刀坐在后面：「此路是我开。」",
+		   "opts":({ "交买路钱（交出一半铜钱）", "硬闯过去（掉三成气血，名声传开：声望 +8）" }) ]),
+		([ "title":"采药的药农", "desc":"山坡上一个药农背着竹篓，篓里是刚采的草药，还挂着露水。",
+		   "opts":({ "买一把草药（花 6 枚铜钱，气血回满）", "帮他采完这片坡（气血上限 +60）" }) ]),
+		([ "title":"受伤的同道", "desc":"路边躺着一个同样来剿匪的江湖人，被人打得只剩一口气。",
+		   "opts":({ "运功替他疗伤（掉一半气血，他留下 1 点属性点的心得）", "给他指条下山的路（回两成气血）" }) ]),
+		([ "title":"荒村古井", "desc":"村口一口古井，井绳还在，井底隐约有东西反光。",
+		   "opts":({ "打水歇一歇（回三成气血）", "顺着井绳下去摸（一半机会摸到 15 枚铜钱，一半摔掉两成气血）" }) ]),
 	});
+}
+
+// 局内气血按上限的百分比加减，不会减到 0
+void yz_heal(object me, int pct)
+{
+	int q = me->query("qi") + me->query("max_qi") * pct / 100;
+
+	if (q > me->query("max_qi")) q = me->query("max_qi");
+	if (q < 1) q = 1;
+	if (me->query("eff_qi") < q) me->set("eff_qi", q);
+	me->set("qi", q);
+}
+
+int yz_pay(mapping s, int n)
+{
+	if ((s["coin"] || 0) < n) return 0;
+	s["coin"] -= n;
+	return 1;
+}
+
+// 一局里不重复遇到同一件事；见全了再从头抽
+int pick_event(mapping s)
+{
+	int *left = ({}), n = sizeof(event_pool()), i;
+
+	if (! arrayp(s["seen_ev"])) s["seen_ev"] = ({});
+	for (i = 0; i < n; i++)
+		if (member_array(i, s["seen_ev"]) < 0) left += ({ i });
+	if (! sizeof(left))
+	{
+		s["seen_ev"] = ({});
+		for (i = 0; i < n; i++) left += ({ i });
+	}
+	i = left[random(sizeof(left))];
+	s["seen_ev"] += ({ i });
+	return i;
 }
 
 void event_menu(object me)
@@ -818,7 +893,110 @@ int resolve_event(object me, int n)
 			tell_object(me, "你摸走他的镖，卖了 15 点声望。他盯着你，什么也没说。\n");
 		}
 		break;
-	default:	// 赌坊
+	case 3:	// 被追杀的书生
+		if (n == 1)
+		{
+			yz_heal(me, -20);
+			s["weak"] = 1;
+			tell_object(me, "你拦在书生前面挨了几棍，把人打跑了。书生喘着气说：「下一个你要找的人，左肋有旧伤。」（下一关敌人少两成血）\n");
+		}
+		else
+		{
+			s["coin"] = (s["coin"] || 0) + 12;
+			me->add("yuanzheng/prestige", -3);
+			tell_object(me, "你把书生推了出去，汉子们塞给你 12 枚铜钱。路边有人朝你啐了一口（声望 -3）。\n");
+		}
+		break;
+	case 4:	// 卖艺的老头
+		if (n == 1 && yz_pay(s, 10))
+		{
+			s["buff"]["apply/damage"] = (s["buff"]["apply/damage"] || 0) + 10;
+			me->add_temp("apply/damage", 10);
+			tell_object(me, "老头收了钱，手把手教了你一记沉腕：伤害 +10。\n");
+		}
+		else
+		{
+			if (n == 1) tell_object(me, "你摸了摸口袋，铜钱不够，只好上去跟他过两招。\n");
+			yz_heal(me, -10);
+			s["buff"]["apply/attack"] = (s["buff"]["apply/attack"] || 0) + 6;
+			me->add_temp("apply/attack", 6);
+			tell_object(me, "你们拆了十几招，你挨了两下，也摸到了他出手的路数：攻击 +6。\n");
+		}
+		break;
+	case 5:	// 算命先生
+		if (n == 1 && yz_pay(s, 8))
+		{
+			s["charm"] = (s["charm"] || 0) + 1;
+			tell_object(me, "算命先生摸出一道黄符塞给你：「命里有一劫，这道符替你挡了。」（下一次倒下不扣命）\n");
+		}
+		else if (n == 1)
+			tell_object(me, "你的铜钱不够，算命先生翻了个白眼，不理你了。\n");
+		else
+		{
+			s["coin"] = (s["coin"] || 0) + 6;
+			tell_object(me, "你一脚踢翻卦摊，捡了 6 枚铜钱。背后传来一句：「印堂发黑，好自为之。」\n");
+		}
+		break;
+	case 6:	// 山贼设卡
+		if (n == 1)
+		{
+			int half = (s["coin"] || 0) / 2;
+			s["coin"] = (s["coin"] || 0) - half;
+			tell_object(me, "你丢过去 " + half + " 枚铜钱，山贼挪开木头放你过去。\n");
+		}
+		else
+		{
+			yz_heal(me, -30);
+			me->add("yuanzheng/prestige", 8);
+			tell_object(me, "你一脚踢开木头，跟两个山贼打了一架，身上挂了彩，名声却传开了（声望 +8）。\n");
+		}
+		break;
+	case 7:	// 采药的药农
+		if (n == 1 && yz_pay(s, 6))
+		{
+			yz_heal(me, 100);
+			tell_object(me, "你嚼了几片草药，又苦又涩，身上的伤却好了（气血回满）。\n");
+		}
+		else if (n == 1)
+			tell_object(me, "铜钱不够，药农摇摇头背着篓走了。\n");
+		else
+		{
+			me->add("max_qi", 60);
+			s["raw"]["max_qi"] = (s["raw"]["max_qi"] || 0) + 60;
+			tell_object(me, "你跟着药农把这片坡采完，他塞给你一根老参须，嚼下去浑身发热（气血上限 +60）。\n");
+		}
+		break;
+	case 8:	// 受伤的同道
+		if (n == 1)
+		{
+			yz_heal(me, -50);
+			s["points"] += 1;
+			tell_object(me, "你运功替他续上一口气，自己累得够呛。他临走前把对付匪首的心得说给你听（得 1 点属性点）。\n");
+		}
+		else
+		{
+			yz_heal(me, 20);
+			tell_object(me, "你给他指了下山的路，在他身边坐着歇了一会儿（回两成气血）。\n");
+		}
+		break;
+	case 9:	// 荒村古井
+		if (n == 1)
+		{
+			yz_heal(me, 30);
+			tell_object(me, "井水冰凉，你喝了几口，坐着歇了歇（回三成气血）。\n");
+		}
+		else if (random(2))
+		{
+			s["coin"] = (s["coin"] || 0) + 15;
+			tell_object(me, "你在井底摸到一个烂布包，里面有 15 枚铜钱。\n");
+		}
+		else
+		{
+			yz_heal(me, -20);
+			tell_object(me, "井绳断了一截，你摔在井底，爬上来时掉了两成气血。\n");
+		}
+		break;
+	case 2:	// 赌坊
 		if (n == 1)
 		{
 			if (random(2))
@@ -881,7 +1059,7 @@ void complete_stage(object me)
 		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return;
 	}
-	s["event"] = ([ "id":random(sizeof(event_pool())) ]);
+	s["event"] = ([ "id":pick_event(s) ]);
 	me->set_temp("yuanzheng", s);
 	save_run(me);
 	event_menu(me);
