@@ -13,6 +13,11 @@ void elite_won(object me, object enemy);
 object find_my_elite(object me);
 object find_my_hold(object me);
 int hold_left(object me);
+int final_ready(object me);
+void final_open(object me, mapping s);
+void spawn_final(object me);
+void final_won(object me);
+object find_final(object me);
 void spawn_hold(object me);
 void hold_next(object me);
 void hold_won(object me);
@@ -452,8 +457,13 @@ void heart_beat()
 			// 刚连上时网页还在「正在加载世界」，这时推的简讯会被丢掉，等几秒再推
 			call_out("push_bar", 4, me);
 		}
-		if (s["stage"] >= sizeof(stages)) continue;
 		if (! objectp(env = environment(me))) continue;
+		if (mapp(s["final"]))
+		{
+			if (base_name(env) == s["final"]["room"] && ! find_final(me)) spawn_final(me);
+			continue;
+		}
+		if (s["stage"] >= sizeof(stages)) continue;
 		// 挑了守点：站到那处地方才刷人，一拨清了隔四秒再来下一拨
 		if (mapp(s["hold"]))
 		{
@@ -489,6 +499,7 @@ string goal_room(object me)
 
 	if (! s || s["planning"] || mapp(s["event"]) || arrayp(s["fork"])) return 0;
 	if (mapp(s["elite"])) return s["elite"]["room"];
+	if (mapp(s["final"])) return s["final"]["room"];
 	if (mapp(s["hold"])) return s["hold"]["room"];
 	if (! mapp(def = cur_stage(me))) return 0;
 	if (def["type"] == "item" && present("treasure", me)) return city_of(me)["inn"];
@@ -502,6 +513,9 @@ string status_line(object me)
 	if (! s) return "";
 	if (! mapp(def = cur_stage(me)))
 		return "远征：五关都过了，可以结算（yuanzheng）";
+	if (mapp(s["final"]))
+		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：终章·幕后主使　命 " +
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　钱 " + (s["coin"] || 0);
 	if (mapp(s["hold"]))
 		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：守点（还剩 " +
 			hold_left(me) + " 个）　命 " + s["life"] + "/" + s["max_life"] + "　钱 " + (s["coin"] || 0);
@@ -863,6 +877,13 @@ int where(object me)
 	{
 		write("stage=planning room=" + stage_room(me, def_at(s, s["stage"])) +
 		      " here=" + (objectp(env = environment(me)) ? base_name(env) : "none") + "\n");
+		return 1;
+	}
+	if (mapp(s["final"]))
+	{
+		write("stage=final room=" + s["final"]["room"] +
+		      " here=" + (objectp(env = environment(me)) ? base_name(env) : "none") +
+		      " final=" + (find_final(me) ? "up" : "waiting") + "\n");
 		return 1;
 	}
 	if (! mapp(def = cur_stage(me))) return notify_fail("五关已经打完了。\n");
@@ -1409,6 +1430,12 @@ void complete_stage(object me)
 		tell_object(me, HIC "（" + def["gain"] + "）" NOR "\n");
 	if (s["stage"] >= sizeof(stages))
 	{
+		// 四个匪首都交过手的老手，这一局的匪首身上还藏着一条线
+		if (final_ready(me))
+		{
+			final_open(me, s);
+			return;
+		}
 		tell_object(me, HIY "五关全部通过！输入 yuanzheng settle 结算这一局。" NOR "\n");
 		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return;
@@ -1457,6 +1484,7 @@ void enemy_died(object killer, object enemy)
 	if (! mapp(s = state(me))) return;
 	if (enemy->query("yz_hold")) { hold_next(me); return; }
 	if (enemy->query("yz_elite")) { elite_won(me, enemy); return; }
+	if (enemy->query("yz_final")) { final_won(me); return; }
 	if (enemy->query("yz_stage") != s["stage"]) return;
 
 	if (mapp(def = cur_stage(me)) && def["type"] == "item")
@@ -1529,6 +1557,7 @@ int jump(object me, int n)
 	map_delete(s, "fork");
 	map_delete(s, "elite");
 	map_delete(s, "hold");
+	map_delete(s, "final");
 	s["stage"] = n - 1;
 	me->set_temp("yuanzheng", s);
 	save_run(me);
@@ -1703,6 +1732,10 @@ string status(object me)
 	mapping s = state(me), def;
 
 	if (! s) return "尚未开始远征。";
+	if (mapp(s["final"]))
+		return "终章·幕后主使：他在" + city_of(me)["name"] + "·" + room_name(s["final"]["room"]) +
+			"等着（自动带路：去 " + s["final"]["room"] + "；打倒他再 yuanzheng settle）\n生命：" +
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　属性点：" + s["points"] + "　铜钱：" + (s["coin"] || 0) + "\n" + gear(me);
 	if (s["stage"] >= sizeof(stages))
 		return sprintf("五关已经全部通过，可以结算。\n生命：%d/%d　属性点：%d%s\n天赋：%s\n远征声望：%d",
 			s["life"], s["max_life"] || MAX_LIFE, s["points"],
@@ -2003,7 +2036,9 @@ int busy_menu(object me, mapping s)
 {
 	string str;
 
-	if (s["stage"] >= sizeof(stages))
+	if (mapp(s["final"]))
+		str = ZJOBLONG "这一局的幕后主使还没打倒，先了结他。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
+	else if (s["stage"] >= sizeof(stages))
 		str = ZJOBLONG "这一局五关已经打完了，先结算，才能再开一局。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
 	else
 		str = ZJOBLONG "你还有一局远征没打完（" + def_at(s, s["stage"])["title"] + "）。\n" ZJOBACTS2 + ZJMENUF(2, 3, 8, 30);
@@ -2214,6 +2249,12 @@ int resume(object me)
 	mapping s = state(me);
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (mapp(s["final"]))
+	{
+		tell_object(me, "幕后主使还在 " + city_of(me)["name"] + "·" + room_name(s["final"]["room"]) +
+			" 等着（自动带路：去 " + s["final"]["room"] + "）。\n");
+		return 1;
+	}
 	if (s["stage"] >= sizeof(stages))
 	{
 		tell_object(me, "五关已经全部通过，可以结算（yuanzheng settle）。\n");
@@ -2250,6 +2291,100 @@ int resume(object me)
 	}
 	begin_stage(me);
 	return 1;
+}
+
+// ---------- 隐藏终章：四个匪首都打过，幕后还有人 ----------
+int final_ready(object me)
+{
+	int i;
+
+	for (i = 0; i < sizeof(bosses); i++)
+		if (! ach_has(me, "boss_" + bosses[i]["id"])) return 0;
+	return 1;
+}
+
+object find_final(object me)
+{
+	foreach (object ob in children(YZ_ENEMY))
+		if (ob && ob->query("yz_owner") == me->query("id") && ob->query("yz_final") &&
+		    ! ob->query_temp("yz_dead"))
+			return ob;
+	return 0;
+}
+
+void final_open(object me, mapping s)
+{
+	string room = city_of(me)["boss"];
+
+	s["final"] = ([ "room": room ]);
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, HIY "你搜了搜匪首身上，摸出一张字条：「线人是我放出去的，副手是我养大的，" +
+		"那件" + treasure_of(s) + "也是我让它一路过手。」" NOR "\n");
+	tell_object(me, HIR "【远征】四城的匪首都跟你交过手了，幕后这个人也就不再藏着。" NOR "\n");
+	tell_object(me, HIR "他在" + city_of(me)["name"] + "·" + room_name(room) +
+		"等着你。（自动带路：去 " + room + "）" NOR "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
+void spawn_final(object me)
+{
+	mapping s = state(me);
+	object ob;
+	int q, over;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["final"])) return;
+	over = s["tier"] > 3 ? s["tier"] - 3 : 0;
+	ob = new(YZ_ENEMY);
+	ob->setup_from(me, sizeof(stages) - 1, "boss", "幕后主使", "muhou");
+	ob->set("yz_stage", s["stage"]);
+	ob->set("yz_final", 1);
+	ob->set("yz_style", style_of(me));
+	ob->set("yz_tier", s["tier"]);
+	ob->set("title", "幕后主使");
+	// 他用的是这一局匪首的路数，等于把刚才那手再使一遍，只是更狠
+	// 他不跑：这一手要是「滑头李三」那套打一半开溜，终章就没法收尾
+	ob->set("yz_boss_name", boss_of(s)["id"] == "flee" ? "shout" : boss_of(s)["id"]);
+	q = ob->query("max_qi") * 180 / 100 + 120;
+	if (s["tier"] > 0)
+	{
+		q = q * (20 + s["tier"] * 6 - over * 3) / 20;
+		ob->add_temp("apply/damage", 8 + s["tier"] * 4 - over * 2);
+		ob->add_temp("apply/unarmed_damage", 8 + s["tier"] * 4 - over * 2);
+		ob->set("combat_exp", 25000 + s["tier"] * 5000 - over * 2500);
+	}
+	else
+		ob->add_temp("apply/damage", 8);
+	ob->set("max_qi", q); ob->set("eff_qi", q); ob->set("qi", q);
+	ob->move(environment(me));
+	message_vision(HIR "$N从屏风后面转出来，慢慢鼓了三下掌：「线人、副手、宝物，都是我递给你的线索。」" NOR "\n", ob);
+	message_vision(HIR "$N" HIR "「你砸了我四处场子，总该来看看主子是谁。」" NOR "\n", ob);
+	tell_object(me, HIC "目标已出现：幕后主使（kill muhou）" NOR "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
+	call_out("look_again", 1, me);
+}
+
+void final_won(object me)
+{
+	mapping s = state(me);
+	int coin, pres;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["final"])) return;
+	coin = 60 + s["stage"] * 6;
+	pres = 30 + s["tier"] * 20;
+	s["coin"] = (s["coin"] || 0) + coin;
+	s["points"] += 2;
+	map_delete(s, "final");
+	me->add("yuanzheng/prestige", pres);
+	me->add("yuanzheng/earned", pres);
+	ach_add(me, "final_master");
+	s["final_cleared"] = 1;
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	tell_object(me, HIY "【远征】幕后主使靠着墙滑下去，临了还在笑：「江湖上的事，哪有真了结的……」" NOR "\n");
+	tell_object(me, HIY "多拿 " + coin + " 枚铜钱、2 点属性点，远征声望 " + pres + " 点。这一局到此为止，" +
+		"输入 yuanzheng settle 结算。" NOR "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
 }
 
 string fmt_time(int sec)
@@ -2321,7 +2456,7 @@ int ach_total(object me)
 int ach_max()
 {
 	return sizeof(cities) + sizeof(styles) + sizeof(bosses) + (MAX_TIER + 1) +
-		sizeof(event_pool()) + sizeof(rare_talents) + sizeof(affixes);
+		sizeof(event_pool()) + sizeof(rare_talents) + sizeof(affixes) + 1;
 }
 
 int book(object me)
@@ -2354,6 +2489,7 @@ int book(object me)
 	ids = map(affixes, (: $1["id"] :));
 	names = map(affixes, (: $1["name"] :));
 	str += ach_line(me, "精英词缀", "aff_", ids, names) + "\n";
+	str += ach_line(me, "终章", "final_", ({ "master" }), ({ "幕后主使" })) + "\n";
 	str += ZJOBACTS2 + ZJMENUF(2, 2, 8, 30) + "回远征菜单:yuanzheng" ZJSEP;
 	write(str + "\n");
 	return 1;
@@ -2382,7 +2518,8 @@ int settle(object me)
 	used = time() - s["started"];
 	if (! me->query("yuanzheng/best_time") || used < me->query("yuanzheng/best_time"))
 		me->set("yuanzheng/best_time", used);
-	tell_object(me, "远征结算完成！五关全过，剩余 " + s["life"] + " 条命，获得远征声望 " +
+	tell_object(me, "远征结算完成！" + (s["final_cleared"] ? "五关全过，幕后主使也打倒了" : "五关全过") +
+		"，剩余 " + s["life"] + " 条命，获得远征声望 " +
 		gain + " 点。局内天赋已经消散，不会带回普通江湖。\n" +
 		"本局用时 " + fmt_time(time() - s["started"]) + "，倒下 " +
 		(s["deaths"] || 0) + " 次，天赋：" + tally(s["talents"]) + "\n" +
@@ -2420,6 +2557,25 @@ void ensure_world(object me)
 }
 
 // 给测试和巫师用：直接判定当前关通过
+varargs int debug_final(object me, int n)
+{
+	int i;
+	mapping s = state(me);
+
+	if (wiz_level(me) < 4 && ! wizardp(me))
+		return notify_fail("这是巫师用的。\n");
+	if (! s) return notify_fail("先开一局远征（yuanzheng）。\n");
+	if (n == 2)
+	{
+		if (! mapp(s["final"])) return notify_fail("这一局还没走到终章（先打完第五关）。\n");
+		final_won(me);
+		return 1;
+	}
+	for (i = 0; i < sizeof(bosses); i++) ach_add(me, "boss_" + bosses[i]["id"]);
+	tell_object(me, "四个匪首都记进图鉴了：这一局打赢第五关就会接上隐藏终章。\n");
+	return 1;
+}
+
 int debug_win(object me)
 {
 	mapping s = state(me);

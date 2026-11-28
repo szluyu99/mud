@@ -448,6 +448,21 @@ async function zjrogueExtras(page) {
   const st1 = await stats();
   const key = (x) => [x.a.con, x.a.dex, x.a.int, x.a.str, x.p.combat_exp].join('/');
   check('zjrogue: temporary bonuses removed after settle', key(st1) === key(st0), [key(st0), key(st1)]);
+
+  // 隐藏终章：四个匪首都打过的人才接得到。用巫师把图鉴补齐，直接打第五关验证
+  await send(page, 'yuanzheng start sword city'); await page.waitForTimeout(2000);
+  await send(page, 'yuanzheng debugfinal'); await page.waitForTimeout(1200);
+  check('zjrogue: 四个匪首都打过才解锁终章', /四个匪首都记进图鉴了/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng jump 5'); await page.waitForTimeout(2500);
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(2500);
+  // 巫师直接判这一关完成，省掉一场可能被反杀的血战（真打的那一路另外实测过）
+  check('zjrogue: 第五关打完接上隐藏终章', await cmd('yuanzheng debugwin', /幕后这个人也就不再藏着/, 30000), await out());
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
+  check('zjrogue: 状态里能看终章进度、说清在哪', /终章·幕后主使/.test(await text()) && /自动带路：去 \/d\//.test(await text()), (await text()).slice(-200));
+  check('zjrogue: 幕后主使能打倒、给声望和属性点', await cmd('yuanzheng debugfinal 2', /多拿 \d+ 枚铜钱、2 点属性点，远征声望 \d+ 点/, 30000), await out());
+  await send(page, 'yuanzheng book'); await page.waitForTimeout(1500);
+  check('zjrogue: 图鉴里终章打了勾', /终章（1\/1）：幕后主使✓/.test(await text()), (await text()).slice(-200));
+  check('zjrogue: 打完终章再结算', await cmd('yuanzheng settle', /幕后主使也打倒了/, 20000), await out());
 }
 
 // ---------- stand-alone wiki pages ----------
