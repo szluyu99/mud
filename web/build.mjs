@@ -28,6 +28,19 @@ export const GAMES = [
   { id: 'zjrogue', base: 'zjmud', config: 'config.zj', title: '书剑江湖·远征', desc: '实验版：在书剑江湖上做「江湖远征」新玩法，开发中。存档和书剑江湖分开', zj: true, wiki: true },
 ];
 
+// --only a,b：只构建其中几个游戏（调试某个游戏时省时间；产物是局部的，不要拿去发布）
+{
+  const only = arg('--only', '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (only.length) {
+    const unknown = only.filter((id) => !GAMES.some((g) => g.id === id));
+    if (unknown.length) {
+      console.error(`--only: no such game: ${unknown.join(', ')}; known: ${GAMES.map((g) => g.id).join(', ')}`);
+      process.exit(1);
+    }
+    GAMES.splice(0, GAMES.length, ...GAMES.filter((g) => only.includes(g.id)));
+  }
+}
+
 // games/<id>/{www,mudlib}；带 base 的游戏先拷 base 再叠上自己的文件，放到临时目录
 const stageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mudbuild-'));
 process.on('exit', () => fs.rmSync(stageRoot, { recursive: true, force: true }));
