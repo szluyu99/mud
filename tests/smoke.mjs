@@ -295,8 +295,13 @@ async function zjrogueExtras(page) {
   check('zjrogue: 点顶栏打开菜单，里面能找回挑路', /yuanzheng route"/.test(await page.evaluate(() => document.body.innerHTML)));
   await send(page, 'yuanzheng route event'); await page.waitForTimeout(1200);
   check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
+  // 流派专属遭遇：剑客能遇到「剑谱残页」，选了以后状态里记着流派心得
+  await send(page, 'yuanzheng debugevent 10'); await page.waitForTimeout(1000);
+  check('zjrogue: 剑客能遇到流派专属的「剑谱残页」', /剑谱残页/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
   check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
+  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
+  check('zjrogue: 状态里显示流派心得', /流派心得：剑谱残页/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng stall'); await page.waitForTimeout(1200);
   check('zjrogue: 局内摊位摆出三件货', /路边的摊子/.test(await text()) && /钱）/.test(await text()) && /铜钱：\d+/.test(await text()), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1200);
@@ -333,16 +338,33 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng debugrare'); await page.waitForTimeout(800);
   check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
   check('zjrogue: 线人会透露这局匪首是谁', /这回坐镇的是/.test(await text()), (await text()).slice(-200));
-  await send(page, 'yuanzheng route event'); await page.waitForTimeout(1000);
-  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
+  // 守一处：街口三个抢匪一起围上来，都打退才算守住（多拿铜钱和 1 点属性点）
+  check('zjrogue: 守点能选、说清楚在哪', await (async () => {
+    await send(page, 'yuanzheng route hold'); await page.waitForTimeout(1200);
+    const t = await text();
+    return /街口有人抢东西/.test(t) && /自动带路：去 \/d\//.test(t);
+  })(), await text().then(t => t.slice(-200)));
+  await send(page, 'goto /d/city/dongdajie1'); await page.waitForTimeout(2500);
+  check('zjrogue: 守点三个人一起围上来', await until(page, () => /（kill qiangfei3）/.test(document.body.innerText), 15000), (await text()).slice(-200));
+  await send(page, 'yuanzheng where'); await page.waitForTimeout(1200);
+  check('zjrogue: 守点顶栏数着还剩几个', /守点（还剩 3 个）/.test(await text()), (await text()).slice(-160));
+  // 打死一个之后顶栏/状态里的「还剩 N 个」会跟着减，这里靠 status 轮询等它减到位
+  const holdKill = async (id, left) => {
+    await send(page, 'kill ' + id);
+    for (let i = 0; i < 50; i++) {
+      await page.waitForTimeout(1500);
+      await send(page, 'yuanzheng status'); await page.waitForTimeout(600);
+      const t = await text();
+      if (new RegExp('还剩 ' + left + ' 个').test(t)) return true;
+      if (/你被打倒|命都用完/.test(t)) return false;
+    }
+    return false;
+  };
+  check('zjrogue: 守点第一个人被打退', await holdKill('qiangfei', 2), (await text()).slice(-160));
+  check('zjrogue: 守点第二个人被打退', await holdKill('qiangfei2', 1), (await text()).slice(-160));
+  check('zjrogue: 守点三个都打退就算守住', await cmd('kill qiangfei3', /这一处守住了！多拿 \d+ 枚铜钱和 1 点属性点/, 90000), await out());
   check('zjrogue: 天赋里能抽到★稀有天赋', await until(page, () => /★/.test(document.body.innerText), 8000), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
-  // 流派专属遭遇：剑客能遇到「剑谱残页」，选了以后状态里记着流派心得
-  await send(page, 'yuanzheng debugevent 10'); await page.waitForTimeout(1000);
-  check('zjrogue: 剑客能遇到流派专属的「剑谱残页」', /剑谱残页/.test(await text()), (await text()).slice(-200));
-  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
-  await send(page, 'yuanzheng status'); await page.waitForTimeout(1200);
-  check('zjrogue: 状态里显示流派心得', /流派心得：剑谱残页/.test(await text()), (await text()).slice(-200));
 
   // 四、截杀副手（匪首在第四关打完时刷出，先把这局的匪首定成会喊人的啸山虎，打法和原来最接近）
   await send(page, 'yuanzheng debugboss 0'); await page.waitForTimeout(800);

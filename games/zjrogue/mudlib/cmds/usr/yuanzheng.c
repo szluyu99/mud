@@ -31,6 +31,8 @@ int menu(object me)
 			str += "下一站怎么走（先选）:yuanzheng route" ZJSEP;
 		else if (mapp(s["elite"]))
 			str += "绕开精英、去下一关:yuanzheng route skip" ZJSEP;
+		else if (mapp(s["hold"]))
+			str += "不守这处了、走开:yuanzheng route skip" ZJSEP;
 		else if (mapp(s["event"]))
 			// 遭遇的弹窗被关掉了也得能找回来，不然下一关一直不开
 			str += "路上遇到的事（先处理）:yuanzheng event" ZJSEP;
