@@ -27,6 +27,10 @@ int menu(object me)
 	{
 		if (s["planning"])
 			str += "看悬赏榜:yuanzheng brief" ZJSEP;
+		else if (arrayp(s["fork"]))
+			str += "下一站怎么走（先选）:yuanzheng route" ZJSEP;
+		else if (mapp(s["elite"]))
+			str += "绕开精英、去下一关:yuanzheng route skip" ZJSEP;
 		else if (mapp(s["event"]))
 			// 遭遇的弹窗被关掉了也得能找回来，不然下一关一直不开
 			str += "路上遇到的事（先处理）:yuanzheng event" ZJSEP;
@@ -67,6 +71,7 @@ int main(object me, string arg)
 	if (sscanf(arg, "debugsp %d", n) == 1) return YZ_D->debug_sp(me, n);
 	if (sscanf(arg, "choose %d", n) == 1) return YZ_D->choose(me, n);
 	if (sscanf(arg, "event %d", n) == 1) return YZ_D->resolve_event(me, n);
+	if (sscanf(arg, "route %s", sub) == 1) return YZ_D->route(me, sub);
 	if (sscanf(arg, "plan %d", n) == 1) return YZ_D->plan(me, n);
 	if (sscanf(arg, "life %d", n) == 1) return YZ_D->debug_life(me, n);
 	if (sscanf(arg, "jump %d", n) == 1) return YZ_D->jump(me, n);
@@ -84,6 +89,7 @@ int main(object me, string arg)
 	case "start":	return YZ_D->start(me, "", "");
 	case "status":	write(YZ_D->status(me) + "\n" + (YZ_D->state(me) ? "" : YZ_D->overview(me) + "\n")); return 1;
 	case "talents":	YZ_D->talent_menu(me); return 1;
+	case "route":	YZ_D->fork_menu(me); return 1;
 	case "submit":	return YZ_D->submit(me);
 	case "settle":	return YZ_D->settle(me);
 	// 手机上误点一下就丢一整局：先确认

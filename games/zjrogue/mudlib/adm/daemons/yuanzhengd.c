@@ -6,6 +6,12 @@
 #define MAX_TIER 5
 
 int ach_add(object me, string k);
+void fork_open(object me, mapping s);
+void fork_menu(object me);
+void spawn_elite(object me);
+void elite_won(object me, object enemy);
+object find_my_elite(object me);
+mapping affix_def(string id);
 #define BACK_ROOM "/d/city/kedian"
 #define YZ_ENEMY "/kungfu/class/yuanzheng/enemy"
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
@@ -53,6 +59,23 @@ mapping *bosses = ({
 });
 
 // 夺宝关摸到的宝物：每局随机一件，终局匪首会提起它
+mapping *forks = ({
+	([ "id":"event",  "name":"路上走走（随机遭遇）", "desc":"碰上什么算什么，可能是好事也可能是麻烦" ]),
+	([ "id":"elite",  "name":"找硬茬子（精英仗）",   "desc":"打一个带词缀的精英，赢了多拿铜钱和 1 点属性点" ]),
+	([ "id":"rest",   "name":"歇脚（回五成血）",     "desc":"找个茶棚坐坐，回五成气血" ]),
+	([ "id":"market", "name":"逛集市（换货、+5 钱）", "desc":"局内摊位换一批新货，顺手捡 5 枚铜钱" ]),
+});
+
+mapping *affixes = ({
+	([ "id":"iron",  "name":"铁布衫", "desc":"挨打少三成" ]),
+	([ "id":"rage",  "name":"狂暴",   "desc":"半血以后出手更重" ]),
+	([ "id":"regen", "name":"回春",   "desc":"打着打着自己回血" ]),
+	([ "id":"bleed", "name":"流血",   "desc":"刀口带倒刺，隔几秒你就掉一截血" ]),
+	([ "id":"swarm", "name":"成群",   "desc":"一开打就喊两个帮手" ]),
+});
+
+string *elite_names = ({ "刀疤脸", "黑店打手", "落魄镖头", "闹事武师", "独眼头陀" });
+
 string *treasures = ({ "鎏金佛像", "翡翠扳指", "镖局账本", "前朝玉玺", "藏宝图残片", "盐引文书" });
 
 string treasure_of(mapping s)
@@ -298,6 +321,8 @@ varargs int debug_rare(object me, string id)
 	{
 		// 直接给一张稀有天赋，用来实测效果；burnhit 模拟「玉石俱焚」砍过一刀后重刷
 		if (id == "burnhit") s["burn_hit"] = 1;
+		else if (id == "elite") s["force_elite"] = 1;
+		else if (sscanf(id, "aff_%s", id) == 1) { s["force_affix"] = id; s["force_elite"] = 1; }
 		else if (stringp(style_mods()[id])) add_smod(s, id);
 		else
 		{
@@ -413,8 +438,15 @@ void heart_beat()
 			call_out("push_bar", 4, me);
 		}
 		if (s["stage"] >= sizeof(stages)) continue;
-		if (! mapp(def = def_at(s, s["stage"]))) continue;
 		if (! objectp(env = environment(me))) continue;
+		if (mapp(s["elite"]))
+		{
+			// 挑了精英仗：走到那个地方才刷出来，打完或绕开以前不开下一关
+			if (base_name(env) == s["elite"]["room"] && ! find_my_elite(me)) spawn_elite(me);
+			continue;
+		}
+		if (arrayp(s["fork"])) continue;
+		if (! mapp(def = def_at(s, s["stage"]))) continue;
 		if (base_name(env) != stage_room(me, def)) continue;
 		if (def["type"] == "ask")
 		{
@@ -434,7 +466,8 @@ string goal_room(object me)
 {
 	mapping s = state(me), def;
 
-	if (! s || s["planning"] || mapp(s["event"])) return 0;
+	if (! s || s["planning"] || mapp(s["event"]) || arrayp(s["fork"])) return 0;
+	if (mapp(s["elite"])) return s["elite"]["room"];
 	if (! mapp(def = cur_stage(me))) return 0;
 	if (def["type"] == "item" && present("treasure", me)) return city_of(me)["inn"];
 	return stage_room(me, def);
@@ -447,6 +480,9 @@ string status_line(object me)
 	if (! s) return "";
 	if (! mapp(def = cur_stage(me)))
 		return "远征：五关都过了，可以结算（yuanzheng）";
+	if (mapp(s["elite"]))
+		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：精英仗·" + s["elite"]["name"] +
+			"　命 " + s["life"] + "/" + s["max_life"] + "　钱 " + (s["coin"] || 0);
 	return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：" + def["title"] +
 		(def["type"] == "boss" && stringp(s["boss_at"]) ? "（追到" + room_name(s["boss_at"]) + "）" : "") +
 		"　命 " + s["life"] + "/" + s["max_life"] + "　钱 " + (s["coin"] || 0);
@@ -808,8 +844,10 @@ int where(object me)
 	write("stage=" + s["stage"] + " room=" + stage_room(me, def) +
 	      " here=" + (env ? base_name(env) : "none") +
 	      " me=" + me->query("qi") + "/" + me->query("max_qi") + "\n");
-	// 排障用：这一关的对手还剩多少血、是不是已经判过死
-	if (objectp(ob = find_my_enemy(me, s["stage"])))
+	// 排障用：这一关的对手还剩多少血、是不是已经判过死（挑了精英仗时看精英）
+	if (mapp(s["elite"]) && objectp(ob = find_my_elite(me)))
+		write("foe=" + ob->query("qi") + "/" + ob->query("max_qi") + " elite\n");
+	else if (objectp(ob = find_my_enemy(me, s["stage"])))
 		write("foe=" + ob->query("qi") + "/" + ob->query("max_qi") +
 		      (ob->query_temp("yz_dead") ? " dead" : "") + "\n");
 	else if (objectp(ob = find_my_info(me, s["stage"])))
@@ -1343,10 +1381,7 @@ void complete_stage(object me)
 		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return;
 	}
-	s["event"] = ([ "id":pick_event(s) ]);
-	me->set_temp("yuanzheng", s);
-	save_run(me);
-	event_menu(me);
+	fork_open(me, s);
 }
 
 // 副手跑了：这一关白打，目标撤掉，打法重新来一遍
@@ -1388,6 +1423,7 @@ void enemy_died(object killer, object enemy)
 	if (! stringp(id)) return;
 	if (! objectp(me = find_player(id))) return;
 	if (! mapp(s = state(me))) return;
+	if (enemy->query("yz_elite")) { elite_won(me, enemy); return; }
 	if (enemy->query("yz_stage") != s["stage"]) return;
 
 	if (mapp(def = cur_stage(me)) && def["type"] == "item")
@@ -1457,6 +1493,8 @@ int jump(object me, int n)
 	clean_world(me);
 	map_delete(s, "event");
 	map_delete(s, "planning");
+	map_delete(s, "fork");
+	map_delete(s, "elite");
 	s["stage"] = n - 1;
 	me->set_temp("yuanzheng", s);
 	save_run(me);
@@ -1641,6 +1679,13 @@ string status(object me)
 		return brief_text(me) + "（先挑一条路：yuanzheng plan 1|2|3）\n生命：" +
 			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　铜钱：" + (s["coin"] || 0) +
 			"\n" + gear(me);
+	if (arrayp(s["fork"]))
+		return "这一关打完了，下一站怎么走还没定（yuanzheng route 看三条路）。\n生命：" + s["life"] + "/" +
+			(s["max_life"] || MAX_LIFE) + "　属性点：" + s["points"] + "　铜钱：" + (s["coin"] || 0) + "\n" + gear(me);
+	if (mapp(s["elite"]))
+		return "精英仗：" + s["elite"]["name"] + "，" + affix_text(s["elite"]["affix"]) + "\n  地点：" +
+			city_of(me)["name"] + "·" + room_name(s["elite"]["room"]) + "（不想打：yuanzheng route skip）\n生命：" +
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　属性点：" + s["points"] + "　铜钱：" + (s["coin"] || 0) + "\n" + gear(me);
 	if (mapp(s["event"]))
 	{
 		mapping *pool = event_pool();
@@ -2046,6 +2091,8 @@ int choose(object me, int n)
 	tell_object(me, "你选择了天赋【" + t["name"] + "】：" + t["desc"] + "。\n");
 	// 一关给了两点时，选完一个接着弹下一张，不用再去菜单里找
 	if (s["points"] > 0) talent_menu(me);
+	// 先选了天赋、还没挑下一站：天赋窗盖掉了挑路的窗，选完把它弹回来
+	else if (arrayp(s["fork"])) fork_menu(me);
 	return 1;
 }
 
@@ -2134,6 +2181,17 @@ int resume(object me)
 		tell_object(me, "五关已经全部通过，可以结算（yuanzheng settle）。\n");
 		return 1;
 	}
+	if (arrayp(s["fork"]))
+	{
+		tell_object(me, "接着打这一局。\n");
+		fork_menu(me);
+		return 1;
+	}
+	if (mapp(s["elite"]))
+	{
+		tell_object(me, "精英仗还没打：去 " + city_of(me)["name"] + "·" + room_name(s["elite"]["room"]) + "（不想打：yuanzheng route skip）。\n");
+		return 1;
+	}
 	if (mapp(s["event"]))
 	{
 		tell_object(me, "接着打这一局。\n");
@@ -2219,7 +2277,7 @@ int ach_total(object me)
 int ach_max()
 {
 	return sizeof(cities) + sizeof(styles) + sizeof(bosses) + (MAX_TIER + 1) +
-		sizeof(event_pool()) + sizeof(rare_talents);
+		sizeof(event_pool()) + sizeof(rare_talents) + sizeof(affixes);
 }
 
 int book(object me)
@@ -2249,6 +2307,9 @@ int book(object me)
 	ids = map(rare_talents, (: $1["value"] :));
 	names = map(rare_talents, (: $1["name"] :));
 	str += ach_line(me, "稀有天赋", "rare_", ids, names) + "\n";
+	ids = map(affixes, (: $1["id"] :));
+	names = map(affixes, (: $1["name"] :));
+	str += ach_line(me, "精英词缀", "aff_", ids, names) + "\n";
 	str += ZJOBACTS2 + ZJMENUF(2, 2, 8, 30) + "回远征菜单:yuanzheng" ZJSEP;
 	write(str + "\n");
 	return 1;
@@ -2323,4 +2384,194 @@ int debug_win(object me)
 	if (wiz_level(me) < 5) return notify_fail("只有巫师能这么做。\n");
 	complete_stage(me);
 	return 1;
+}
+
+// ===================== 路线分叉 + 精英仗 =====================
+// 每过一关不再固定碰一件遭遇，而是给三条路挑：路上走走（遭遇）必在，
+// 另外两条从「找硬茬子」「歇脚」「逛集市」里抽。精英仗是一个带词缀的强敌，
+// 打赢多拿铜钱和属性点；也可以不打，直接去下一关。
+
+mapping fork_def(string id)
+{
+	foreach (mapping f in forks) if (f["id"] == id) return f;
+	return 0;
+}
+
+mapping affix_def(string id)
+{
+	foreach (mapping a in affixes) if (a["id"] == id) return a;
+	return 0;
+}
+
+string affix_text(string *ids)
+{
+	string *out = ({});
+	foreach (string id in ids || ({}))
+		if (mapp(affix_def(id))) out += ({ affix_def(id)["name"] + "（" + affix_def(id)["desc"] + "）" });
+	return implode(out, "、");
+}
+
+// 过关后（还没到最后）给三条路
+void fork_open(object me, mapping s)
+{
+	string *rest = ({ "elite", "rest", "market" });
+	string pick;
+
+	pick = rest[random(sizeof(rest))];
+	rest -= ({ pick });
+	s["fork"] = ({ "event", pick, rest[random(sizeof(rest))] });
+	if (s["force_elite"] && member_array("elite", s["fork"]) < 0) s["fork"][1] = "elite";
+	map_delete(s, "force_elite");
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	fork_menu(me);
+}
+
+void fork_menu(object me)
+{
+	mapping s = state(me), f;
+	string str;
+
+	if (! s || ! arrayp(s["fork"])) return;
+	str = ZJOBLONG "下一站怎么走？\n";
+	foreach (string id in s["fork"])
+		if (mapp(f = fork_def(id))) str += "· " + f["name"] + "：" + f["desc"] + "\n";
+	str += ZJOBACTS2 + ZJMENUF(3, 3, 8, 30);
+	foreach (string id in s["fork"])
+		if (mapp(f = fork_def(id))) str += f["name"] + ":yuanzheng route " + id + ZJSEP;
+	tell_object(me, str + "\n");
+	tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
+// 分叉走完（歇脚、集市、精英打完或绕开）：选天赋、开下一关
+void fork_done(object me, mapping s)
+{
+	me->set_temp("yuanzheng", s);
+	save_run(me);
+	if (s["points"] > 0) talent_menu(me);
+	begin_stage(me);
+}
+
+int route(object me, string id)
+{
+	mapping s = state(me), def;
+	string room;
+
+	if (! s) return notify_fail("你还没有开始远征。\n");
+	if (id == "skip" && mapp(s["elite"]))
+	{
+		foreach (object ob in children(YZ_ENEMY))
+			if (ob && ob->query("yz_owner") == me->query("id") && ob->query("yz_elite"))
+				call_out("purge", 1, ({ ob }));
+		map_delete(s, "elite");
+		tell_object(me, "你不跟那硬茬子纠缠，绕道去办正事。\n");
+		fork_done(me, s);
+		return 1;
+	}
+	if (! arrayp(s["fork"])) return notify_fail("现在不用挑路。\n");
+	if (member_array(id, s["fork"]) < 0 && wiz_level(me) < 5)
+		return notify_fail("这回没有这条路可走。\n");
+	if (! mapp(fork_def(id))) return notify_fail("没有这条路。\n");
+	map_delete(s, "fork");
+	switch (id)
+	{
+	case "event":
+		s["event"] = ([ "id":pick_event(s) ]);
+		me->set_temp("yuanzheng", s);
+		save_run(me);
+		event_menu(me);
+		return 1;
+	case "rest":
+		yz_heal(me, 50);
+		tell_object(me, HIG "你在路边茶棚坐了一阵，喝了两碗粗茶，气血回了五成。" NOR "\n");
+		fork_done(me, s);
+		return 1;
+	case "market":
+		roll_stall(me, s);
+		s["coin"] = (s["coin"] || 0) + 5;
+		tell_object(me, HIG "你在集市上转了一圈，地上捡到 5 枚铜钱；局内摊位换了一批新货（yuanzheng stall）。" NOR "\n");
+		fork_done(me, s);
+		return 1;
+	case "elite":
+		def = def_at(s, s["stage"]);
+		room = flee_room(me, mapp(def) ? stage_room(me, def) : "");
+		if (! stringp(room)) room = city_of(me)["kill"];
+		s["elite"] = ([ "room":room, "affix":({}) ]);
+		{
+			string *pool = map(affixes, (: $1["id"] :));
+			string a;
+			int n = s["tier"] >= 3 ? 2 : 1;
+			if (stringp(s["force_affix"])) { s["elite"]["affix"] += ({ s["force_affix"] }); pool -= ({ s["force_affix"] }); map_delete(s, "force_affix"); }
+			while (sizeof(s["elite"]["affix"]) < n && sizeof(pool))
+			{
+				a = pool[random(sizeof(pool))];
+				pool -= ({ a });
+				s["elite"]["affix"] += ({ a });
+			}
+		}
+		s["elite"]["name"] = elite_names[random(sizeof(elite_names))];
+		me->set_temp("yuanzheng", s);
+		save_run(me);
+		tell_object(me, HIY "【远征】有个硬茬子在" + city_of(me)["name"] + "·" + room_name(room) +
+			"等着：" + s["elite"]["name"] + "，" + affix_text(s["elite"]["affix"]) + "。\n" +
+			"（自动带路：去 " + room + "；不想打就 yuanzheng route skip 绕开）" NOR "\n");
+		if (s["points"] > 0) talent_menu(me);
+		tell_object(me, "YZ#" + status_line(me) + "\n");
+		return 1;
+	}
+	return 1;
+}
+
+object find_my_elite(object me)
+{
+	foreach (object ob in children(YZ_ENEMY))
+		if (ob && ob->query("yz_owner") == me->query("id") && ob->query("yz_elite") && ! ob->query_temp("yz_dead"))
+			return ob;
+	return 0;
+}
+
+void spawn_elite(object me)
+{
+	mapping s = state(me), e;
+	object ob;
+	int q;
+
+	if (! s || ! mapp(e = s["elite"])) return;
+	ob = new(YZ_ENEMY);
+	ob->setup_from(me, s["stage"], "elite", e["name"], "jingying");
+	ob->set("yz_stage", 100 + s["stage"]);
+	ob->set("yz_elite", 1);
+	ob->set("yz_affix", e["affix"]);
+	ob->set("yz_style", style_of(me));
+	ob->set("yz_tier", s["tier"]);
+	ob->set("title", "精英·" + implode(map(e["affix"], (: affix_def($1)["name"] :)), "·"));
+	// 精英是可选的硬仗：比同关普通目标多一成半血，词缀本身已经够难缠
+	q = ob->query("max_qi") * 115 / 100;
+	if (s["tier"] > 0)
+	{
+		int over = s["tier"] > 3 ? s["tier"] - 3 : 0;
+		q = q * (20 + s["tier"] * 6 - over * 3) / 20;
+		ob->add_temp("apply/damage", s["tier"] * 4 - over * 2);
+		ob->add_temp("apply/unarmed_damage", s["tier"] * 4 - over * 2);
+		ob->set("combat_exp", 25000 + s["tier"] * 5000 - over * 2500);
+	}
+	ob->set("max_qi", q); ob->set("eff_qi", q); ob->set("qi", q);
+	ob->move(environment(me));
+	message_vision(HIR "$N" HIR "抱着膀子站在路当中，冷笑着打量你。" NOR "\n", ob);
+	tell_object(me, HIC "目标已出现：" + ob->query("name") + "（kill jingying）" NOR "\n");
+}
+
+void elite_won(object me, object enemy)
+{
+	mapping s = state(me);
+	int coin;
+
+	if (! s || ! mapp(s["elite"])) return;
+	coin = 15 + s["stage"] * 3;
+	s["coin"] = (s["coin"] || 0) + coin;
+	s["points"] += 1;
+	foreach (string a in s["elite"]["affix"]) ach_add(me, "aff_" + a);
+	map_delete(s, "elite");
+	tell_object(me, HIY "【远征】硬茬子打倒了！多拿 " + coin + " 枚铜钱和 1 点属性点。" NOR "\n");
+	fork_done(me, s);
 }

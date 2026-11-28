@@ -10,6 +10,14 @@ object find_owner();
 int near_dead();
 int owner_rare(object who, string id);
 int owner_smod(object who, string id);
+object boss_target();
+
+// 精英词缀：铁布衫/狂暴/回春/流血/成群
+int has_affix(string id)
+{
+	mixed a = query("yz_affix");
+	return arrayp(a) && member_array(id, a) >= 0;
+}
 
 void create()
 {
@@ -104,6 +112,7 @@ varargs int receive_damage(string type, int damage, object who)
 	// 三个流派的出手方式不同：剑客靠连招叠伤害，拳师每三下一记寸劲，
 	// 刀客自己血越少越狠。加成只算在这个对手身上，换关就重新数。
 	damage = style_damage(type, damage, who);
+	if (type == "qi" && has_affix("iron")) damage = damage * 7 / 10;
 	r = ::receive_damage(type, damage, who);
 
 	if (! objectp(this_object()) || query_temp("yz_dead")) return r;
@@ -116,6 +125,13 @@ varargs int receive_damage(string type, int damage, object who)
 		set_temp("yz_rage", 1);
 		add_temp("apply/attack", 10);
 		message_vision(HIR "$N把牙一咬，眼睛红了，出手一下子狠了起来！\n" NOR, this_object());
+	}
+	if (has_affix("rage") && ! query_temp("yz_rage") && query("qi") * 2 <= query("max_qi"))
+	{
+		set_temp("yz_rage", 1);
+		add_temp("apply/damage", 20);
+		add_temp("apply/unarmed_damage", 20);
+		message_vision(HIR "$N挨了这几下反倒狂性大发，吼叫着扑了上来！\n" NOR, this_object());
 	}
 	// 稀有天赋「嗜血」：打中回一成伤害的气血
 	if (type == "qi" && objectp(who) && userp(who) && damage > 0 && owner_rare(who, "leech"))
@@ -284,6 +300,38 @@ void heart_beat()
 	}
 	if (query("yz_kind") == "guard" && objectp(query_last_damage_from()))
 		guard_shout();
+	if (query("yz_elite") && is_fighting())
+	{
+		object foe = boss_target();
+		int t = time();
+		if (has_affix("regen") && t - (int)query_temp("yz_regen_at") >= 5 && query("qi") < query("max_qi"))
+		{
+			int h = query("max_qi") * 3 / 100;
+			set_temp("yz_regen_at", t);
+			set("eff_qi", query("eff_qi") + h > query("max_qi") ? query("max_qi") : query("eff_qi") + h);
+			set("qi", query("qi") + h > query("eff_qi") ? query("eff_qi") : query("qi") + h);
+			message_vision(HIG "$N深吸一口气，伤口的血慢慢止住了。\n" NOR, this_object());
+		}
+		if (has_affix("bleed") && objectp(foe) && t - (int)query_temp("yz_bleed_at") >= 6)
+		{
+			set_temp("yz_bleed_at", t);
+			foe->receive_damage("qi", foe->query("max_qi") * 3 / 100 + 2, this_object());
+			message_vision(HIR "$n身上被倒刺划开的口子还在往外渗血。\n" NOR, this_object(), foe);
+		}
+		if (has_affix("swarm") && objectp(foe) && ! query_temp("yz_swarmed"))
+		{
+			set_temp("yz_swarmed", 1);
+			message_vision(HIR "$N一声呼哨，巷子里又钻出两个人来！\n" NOR, this_object());
+			for (int i = 0; i < 2; i++)
+			{
+				object ob = new(YZ_ALLY);
+				if (! objectp(ob)) continue;
+				ob->setup_from_ally(query("yz_owner"), query("yz_stage") % 100);
+				ob->move(environment(this_object()));
+				ob->kill_ob(foe);
+			}
+		}
+	}
 	if (query("yz_kind") == "boss")
 	{
 		object owner;

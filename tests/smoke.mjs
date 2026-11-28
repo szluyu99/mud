@@ -287,11 +287,14 @@ async function zjrogueExtras(page) {
   check('zjrogue: stage 1 clear after killing 恶汉', await cmd('kill ehan', /一、剿匪 完成|匪首/, 90000), await out());
   // 剑客第二下起会喊「剑势连绵」；打得快时这句可能被后面的战况顶出可见区，所以这里放宽到整段
   check('zjrogue: 剑客连招会叠伤害', /剑势连绵|造成 \d+ 点/.test(await text()), (await text()).slice(-200));
-  check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
-  // 遭遇弹窗被关掉以后，菜单里得有入口找回来，否则下一关一直不开
+  // 过关后先挑下一站：路上走走（遭遇）一定在，另外两条从精英仗/歇脚/集市里抽
+  check('zjrogue: 过关后给三条路挑', /下一站怎么走/.test(await text()) && /路上走走/.test(await text()), (await text()).slice(-200));
+  // 挑路的弹窗被关掉以后，菜单里得有入口找回来，否则下一关一直不开
   await page.evaluate(() => { try { $('.ui-dialog-content').dialog('close'); } catch (e) { /* none */ } });
   await page.evaluate(() => document.getElementById('yzbar')?.click()); await page.waitForTimeout(1500);
-  check('zjrogue: 点顶栏打开菜单，里面能找回遭遇', /yuanzheng event"/.test(await page.evaluate(() => document.body.innerHTML)));
+  check('zjrogue: 点顶栏打开菜单，里面能找回挑路', /yuanzheng route"/.test(await page.evaluate(() => document.body.innerHTML)));
+  await send(page, 'yuanzheng route event'); await page.waitForTimeout(1200);
+  check('zjrogue: 过关后遇到一件随机事', /路上遇到：/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1200);
   check('zjrogue: 处理完遭遇才轮到天赋', /选一个天赋/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng stall'); await page.waitForTimeout(1200);
@@ -312,7 +315,17 @@ async function zjrogueExtras(page) {
   }
   await send(page, 'goto /d/city/kedian'); await page.waitForTimeout(2500);
   check('zjrogue: 宝物 submitted at 宝昌客栈', await cmd('yuanzheng submit', /二、夺宝 完成/, 20000), await out());
-  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
+  // 这一回走精英仗：带词缀的硬茬子，打赢多拿铜钱和属性点
+  await send(page, 'yuanzheng route elite'); await page.waitForTimeout(1200);
+  {
+    const room = ((await text()).match(/有个硬茬子在[\s\S]*?自动带路：去 (\/d\/[\w\/]+)/) || [])[1];
+    check('zjrogue: 精英仗说清楚在哪、带什么词缀', !!room && /铁布衫|狂暴|回春|流血|成群/.test(await text()), (await text()).slice(-200));
+    await send(page, 'goto ' + room); await page.waitForTimeout(2500);
+    // 精英是站到那个房间后由心跳刷出来的，等它出现再动手
+    await until(page, () => /（kill jingying）/.test(document.body.innerText), 15000);
+    check('zjrogue: 打赢精英多拿铜钱和属性点', await cmd('kill jingying', /硬茬子打倒了/, 90000), await out());
+  }
+  await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 三、寻访：问线人
@@ -320,6 +333,7 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng debugrare'); await page.waitForTimeout(800);
   check('zjrogue: 线人 answers and stage 3 clears', await cmd('ask xianren about 远征', /三、寻访 完成/, 30000), await out());
   check('zjrogue: 线人会透露这局匪首是谁', /这回坐镇的是/.test(await text()), (await text()).slice(-200));
+  await send(page, 'yuanzheng route event'); await page.waitForTimeout(1000);
   await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
   check('zjrogue: 天赋里能抽到★稀有天赋', await until(page, () => /★/.test(document.body.innerText), 8000), (await text()).slice(-200));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
@@ -336,7 +350,8 @@ async function zjrogueExtras(page) {
   // 副手血到三成会掉头跑，跑了这一关得重来；这里要么打死，要么认下「人跑了」这一手
   check('zjrogue: 副手 killed, stage 4 clears', await cmd('kill fushou', /四、截杀 完成|人跑了，这一关得重来/, 60000),
     await out());
-  await send(page, 'yuanzheng event 1'); await page.waitForTimeout(1000);
+  await send(page, 'yuanzheng route rest'); await page.waitForTimeout(1000);
+  check('zjrogue: 歇脚能回血', /气血回了五成/.test(await text()), (await text()).slice(-160));
   await send(page, 'yuanzheng choose 1'); await page.waitForTimeout(1000);
 
   // 五、终局：匪首每局随机一个，各有一手
@@ -356,8 +371,8 @@ async function zjrogueExtras(page) {
   await waitText(/获得远征声望 \d+ 点/, 15000);
   {
     const m = /剩余 (\d+) 条命，获得远征声望 (\d+) 点/.exec(await text());
-    // 这一趟只在前四关各选一次天赋，所以是 4 个
-    const base = m ? 8 + 4 * 2 + ((+m[1]) - 1) * 3 : 0;
+    // 前四关各选一次天赋，第二关后打赢精英又多一点属性点，所以是 5 个
+    const base = m ? 8 + 5 * 2 + ((+m[1]) - 1) * 3 : 0;
     check('zjrogue: settle shows 本局统计', await waitText(/本局用时 \d+/, 5000), (await text()).slice(-160));
   check('zjrogue: 打完五关带出战利品', await waitText(/带出了一件远征长剑/, 5000), (await text()).slice(-150));
     // 第一次通关还会点亮图鉴：城、流派、匪首、难度各 +5
