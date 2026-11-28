@@ -463,6 +463,21 @@ async function zjrogueExtras(page) {
   await send(page, 'yuanzheng book'); await page.waitForTimeout(1500);
   check('zjrogue: 图鉴里终章打了勾', /终章（1\/1）：幕后主使✓/.test(await text()), (await text()).slice(-200));
   check('zjrogue: 打完终章再结算', await cmd('yuanzheng settle', /幕后主使也打倒了/, 20000), await out());
+
+  // 押一趟镖：镖师跟在你身后，路上有人来抢，把人送到城门就算押完
+  await send(page, 'yuanzheng start sword city'); await page.waitForTimeout(1800);
+  await send(page, 'yuanzheng plan 1'); await page.waitForTimeout(1500);
+  await send(page, 'yuanzheng debugwin'); await page.waitForTimeout(1800);
+  await send(page, 'yuanzheng route escort'); await page.waitForTimeout(1500);
+  {
+    const t = await text();
+    check('zjrogue: 押镖能选、说清起终点', /镖局托你押一趟/.test(t) && /自动带路：去 \/d\//.test(t), t.slice(-220));
+  }
+  await send(page, 'goto /d/city/beimen'); await page.waitForTimeout(3500);
+  check('zjrogue: 走到起点镖师就跟上来', await until(page, () => /劫道的|镖师/.test(document.body.innerText), 15000), (await text()).slice(-200));
+  check('zjrogue: 顶栏记着这趟押镖', /押镖（送到/.test(await page.evaluate(() => document.getElementById('yzbar')?.textContent || '')), await page.evaluate(() => document.getElementById('yzbar')?.textContent || ''));
+  await send(page, 'goto /d/city/guangchang'); await page.waitForTimeout(3000);
+  check('zjrogue: 送到城门就算押完', await until(page, () => /这一趟镖送到了/.test(document.body.innerText), 25000), (await text()).slice(-220));
 }
 
 // ---------- stand-alone wiki pages ----------

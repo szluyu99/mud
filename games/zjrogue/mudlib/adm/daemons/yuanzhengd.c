@@ -21,6 +21,12 @@ object find_final(object me);
 void spawn_hold(object me);
 void hold_next(object me);
 void hold_won(object me);
+object find_escort(object me);
+void spawn_escort(object me);
+void spawn_escort_foe(object me);
+void escort_won(object me);
+void escort_failed(object me);
+void purge_escort_foe(object me);
 void look_again(object me);
 mapping affix_def(string id);
 #define BACK_ROOM "/d/city/kedian"
@@ -28,6 +34,7 @@ mapping affix_def(string id);
 #define YZ_INFO "/kungfu/class/yuanzheng/informant"
 #define YZ_TREASURE "/clone/misc/yz_treasure"
 #define YZ_ALLY "/kungfu/class/yuanzheng/helper"
+#define YZ_ESCORT "/kungfu/class/yuanzheng/escort"
 #define YZ_SPOIL_SWORD "/clone/misc/yz_spoil_sword"
 #define YZ_SPOIL_BLADE "/clone/misc/yz_spoil_blade"
 #define YZ_SPOIL_BOOTS "/clone/misc/yz_spoil_boots"
@@ -76,6 +83,7 @@ mapping *forks = ({
 	([ "id":"rest",   "name":"歇脚（回五成血）",     "desc":"找个茶棚坐坐，回五成气血" ]),
 	([ "id":"market", "name":"逛集市（换货、+5 钱）", "desc":"局内摊位换一批新货，顺手捡 5 枚铜钱" ]),
 	([ "id":"hold",   "name":"守一处（打退三拨人）", "desc":"站定一处地方，三个抢匪围上来；都打退多拿铜钱和 1 点属性点" ]),
+	([ "id":"escort", "name":"押一趟镖（送到城门）", "desc":"镖师跟在你身后，路上有人来抢；把他带到城门，多拿铜钱和 1 点属性点" ]),
 });
 
 mapping *affixes = ({
@@ -465,6 +473,20 @@ void heart_beat()
 		}
 		if (s["stage"] >= sizeof(stages)) continue;
 		// 挑了守点：站到那处地方才刷人，一拨清了隔四秒再来下一拨
+		if (mapp(s["escort"]))
+		{
+			object npc = find_escort(me);
+			if (! objectp(npc))
+			{
+				if (base_name(env) == s["escort"]["room"]) spawn_escort(me);
+			}
+			else if (environment(npc) == env)
+			{
+				if (base_name(env) == s["escort"]["dest"]) { escort_won(me); continue; }
+				if (time() >= (s["escort"]["next_at"] || 0)) spawn_escort_foe(me);
+			}
+			continue;
+		}
 		if (mapp(s["hold"]))
 		{
 			if (base_name(env) == s["hold"]["room"] && ! find_my_hold(me)) spawn_hold(me);
@@ -500,6 +522,7 @@ string goal_room(object me)
 	if (! s || s["planning"] || mapp(s["event"]) || arrayp(s["fork"])) return 0;
 	if (mapp(s["elite"])) return s["elite"]["room"];
 	if (mapp(s["final"])) return s["final"]["room"];
+	if (mapp(s["escort"])) return find_escort(me) ? s["escort"]["dest"] : s["escort"]["room"];
 	if (mapp(s["hold"])) return s["hold"]["room"];
 	if (! mapp(def = cur_stage(me))) return 0;
 	if (def["type"] == "item" && present("treasure", me)) return city_of(me)["inn"];
@@ -516,6 +539,10 @@ string status_line(object me)
 	if (mapp(s["final"]))
 		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：终章·幕后主使　命 " +
 			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　钱 " + (s["coin"] || 0);
+	if (mapp(s["escort"]))
+		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：押镖（送到 " +
+			room_name(s["escort"]["dest"]) + "）　命 " + s["life"] + "/" + (s["max_life"] || MAX_LIFE) +
+			"　钱 " + (s["coin"] || 0);
 	if (mapp(s["hold"]))
 		return "远征" + (s["tier"] ? "·" + tier_name(s["tier"]) : "") + "：守点（还剩 " +
 			hold_left(me) + " 个）　命 " + s["life"] + "/" + s["max_life"] + "　钱 " + (s["coin"] || 0);
@@ -705,6 +732,9 @@ varargs void clean_world(object me, int stage)
 	foreach (ob in children(YZ_INFO))
 		if (ob && ob->query("yz_owner") == me->query("id"))
 			kill += ({ ob });
+	foreach (ob in children(YZ_ESCORT))
+		if (ob && ob->query("yz_owner") == me->query("id"))
+			kill += ({ ob });
 	if (sizeof(kill)) call_out("purge", 1, kill);
 }
 
@@ -892,6 +922,13 @@ int where(object me)
 	      " here=" + (env ? base_name(env) : "none") +
 	      " me=" + me->query("qi") + "/" + me->query("max_qi") + "\n");
 	// 排障用：这一关的对手还剩多少血、是不是已经判过死（挑了精英仗时看精英）
+	if (mapp(s["escort"]))
+	{
+		object npc = find_escort(me);
+		write("escort=" + s["escort"]["room"] + " dest=" + s["escort"]["dest"] +
+		      " npc=" + (objectp(npc) && objectp(environment(npc)) ? base_name(environment(npc)) : "none") +
+		      " here=" + base_name(environment(me)) + "\n");
+	}
 	if (mapp(s["hold"]))
 	{
 		write("hold=" + s["hold"]["room"] + " left=" + hold_left(me) + "\n");
@@ -1557,6 +1594,7 @@ int jump(object me, int n)
 	map_delete(s, "fork");
 	map_delete(s, "elite");
 	map_delete(s, "hold");
+	map_delete(s, "escort");
 	map_delete(s, "final");
 	s["stage"] = n - 1;
 	me->set_temp("yuanzheng", s);
@@ -1749,6 +1787,12 @@ string status(object me)
 	if (arrayp(s["fork"]))
 		return "这一关打完了，下一站怎么走还没定（yuanzheng route 看三条路）。\n生命：" + s["life"] + "/" +
 			(s["max_life"] || MAX_LIFE) + "　属性点：" + s["points"] + "　铜钱：" + (s["coin"] || 0) + "\n" + gear(me);
+	if (mapp(s["escort"]))
+		return "押镖：" + (find_escort(me) ? "镖师跟着你，把人送到" : "镖师还在") + city_of(me)["name"] + "·" +
+			room_name(find_escort(me) ? s["escort"]["dest"] : s["escort"]["room"]) +
+			"（自动带路：去 " + (find_escort(me) ? s["escort"]["dest"] : s["escort"]["room"]) +
+			"；不想跑：yuanzheng route skip）\n生命：" +
+			s["life"] + "/" + (s["max_life"] || MAX_LIFE) + "　属性点：" + s["points"] + "　铜钱：" + (s["coin"] || 0) + "\n" + gear(me);
 	if (mapp(s["hold"]))
 		return "守点：站住" + city_of(me)["name"] + "·" + room_name(s["hold"]["room"]) +
 			"，街口三个人来抢（还剩 " + hold_left(me) + " 个；不想守：yuanzheng route skip）\n生命：" +
@@ -2266,6 +2310,13 @@ int resume(object me)
 		fork_menu(me);
 		return 1;
 	}
+	if (mapp(s["escort"]))
+	{
+		tell_object(me, "押镖还没跑完：" + (find_escort(me) ? "镖师跟着你，把人送到" : "去") +
+			city_of(me)["name"] + "·" + room_name(find_escort(me) ? s["escort"]["dest"] : s["escort"]["room"]) +
+			"（自动带路：去 " + (find_escort(me) ? s["escort"]["dest"] : s["escort"]["room"]) + "）。\n");
+		return 1;
+	}
 	if (mapp(s["hold"]))
 	{
 		tell_object(me, "守点还没守完：去 " + city_of(me)["name"] + "·" + room_name(s["hold"]["room"]) +
@@ -2614,7 +2665,7 @@ string affix_text(string *ids)
 // 过关后（还没到最后）给三条路
 void fork_open(object me, mapping s)
 {
-	string *rest = ({ "elite", "rest", "market", "hold" });
+	string *rest = ({ "elite", "rest", "market", "hold", "escort" });
 	string pick;
 
 	pick = rest[random(sizeof(rest))];
@@ -2660,16 +2711,18 @@ int route(object me, string id)
 	string room;
 
 	if (! s) return notify_fail("你还没有开始远征。\n");
-	if (id == "skip" && (mapp(s["elite"]) || mapp(s["hold"])))
+	if (id == "skip" && (mapp(s["elite"]) || mapp(s["hold"]) || mapp(s["escort"])))
 	{
-		object *kill = ({});
-		foreach (object ob in children(YZ_ENEMY))
+		object *kill = ({}), ob;
+		foreach (ob in children(YZ_ENEMY))
 			if (ob && ob->query("yz_owner") == me->query("id") &&
-			    (ob->query("yz_elite") || ob->query("yz_hold")))
+			    (ob->query("yz_elite") || ob->query("yz_hold") || ob->query("yz_escort_foe")))
 				kill += ({ ob });
+		if (objectp(ob = find_escort(me))) kill += ({ ob });
 		if (sizeof(kill)) call_out("purge", 1, kill);
 		map_delete(s, "elite");
 		map_delete(s, "hold");
+		map_delete(s, "escort");
 		tell_object(me, "你不跟这桩闲事纠缠，绕道去办正事。\n");
 		fork_done(me, s);
 		return 1;
@@ -2708,6 +2761,22 @@ int route(object me, string id)
 		tell_object(me, HIY "【远征】街口有人抢东西，你应下了：站住" + city_of(me)["name"] + "·" +
 			room_name(room) + "，街口三个人来抢，都打退才算守住。（自动带路：去 " + room +
 			"；不想守就 yuanzheng route skip 走开）" NOR "\n");
+		tell_object(me, "YZ#" + status_line(me) + "\n");
+		return 1;
+	case "escort":
+		def = def_at(s, s["stage"]);
+		{
+			mapping c = city_of(me);
+			string from = stringp(c["street"]) ? c["street"] : stage_room(me, def);
+			string to = stringp(c["kill"]) ? c["kill"] : stage_room(me, def);
+			if (to == from) to = stringp(c["boss"]) ? c["boss"] : to;
+			s["escort"] = ([ "room":from, "dest":to, "next_at":0 ]);
+		}
+		me->set_temp("yuanzheng", s);
+		save_run(me);
+		tell_object(me, HIY "【远征】镖局托你押一趟：镖师在" + city_of(me)["name"] + "·" +
+			room_name(s["escort"]["room"]) + "等着，把人送到" + room_name(s["escort"]["dest"]) +
+			"。（自动带路：去 " + s["escort"]["room"] + "；不想跑就 yuanzheng route skip）" NOR "\n");
 		tell_object(me, "YZ#" + status_line(me) + "\n");
 		return 1;
 	case "elite":
@@ -2871,5 +2940,116 @@ void hold_won(object me)
 	s["points"] += 1;
 	map_delete(s, "hold");
 	tell_object(me, HIY "【远征】三个人都被打退了，这一处守住了！多拿 " + coin + " 枚铜钱和 1 点属性点。" NOR "\n");
+	fork_done(me, s);
+}
+
+// ---------- 押一趟镖：把镖师送到城门 ----------
+object find_escort(object me)
+{
+	foreach (object ob in children(YZ_ESCORT))
+		if (ob && ob->query("yz_owner") == me->query("id"))
+			return ob;
+	return 0;
+}
+
+void purge_escort_foe(object me)
+{
+	object *kill = ({});
+
+	foreach (object ob in children(YZ_ENEMY))
+		if (ob && ob->query("yz_owner") == me->query("id") && ob->query("yz_escort_foe"))
+			kill += ({ ob });
+	if (sizeof(kill)) call_out("purge", 1, kill);
+}
+
+void spawn_escort(object me)
+{
+	mapping s = state(me);
+	object npc;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["escort"])) return;
+	if (find_escort(me)) return;
+	npc = new(YZ_ESCORT);
+	npc->set("yz_owner", me->query("id"));
+	npc->set_leader(me);
+	npc->move(environment(me));
+	message_vision(HIC "镖师抱着夹板走过来，冲$N一拱手：「这趟就仰仗您了，送到城门，我请您喝酒。」" NOR "\n", me);
+	tell_object(me, HIY "【远征】押镖：把人送到" + city_of(me)["name"] + "·" +
+		room_name(s["escort"]["dest"]) + "就行（自动带路：去 " + s["escort"]["dest"] + "）。路上有人来抢。" NOR "\n");
+	s["escort"]["next_at"] = time() + 8;
+	me->set_temp("yuanzheng", s);
+	tell_object(me, "YZ#" + status_line(me) + "\n");
+}
+
+void spawn_escort_foe(object me)
+{
+	mapping s = state(me);
+	object foe, npc = find_escort(me);
+	int q, over;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["escort"])) return;
+	if (! objectp(npc) || environment(npc) != environment(me)) return;
+	// 同一处只留一个劫道的：不然玩家站着不动会被越围越多，一路打不完
+	foreach (object ob in children(YZ_ENEMY))
+		if (ob && ob->query("yz_owner") == me->query("id") && ob->query("yz_escort_foe") &&
+		    ! ob->query_temp("yz_dead") && environment(ob) == environment(me))
+			return;
+	over = s["tier"] > 3 ? s["tier"] - 3 : 0;
+	foe = new(YZ_ENEMY);
+	foe->setup_from(me, s["stage"], "thug", "劫道的", "jiedao");
+	foe->set("yz_stage", 300 + s["stage"]);
+	foe->set("yz_escort_foe", 1);
+	foe->set("yz_style", style_of(me));
+	foe->set("yz_tier", s["tier"]);
+	foe->set("title", "劫道的");
+	q = foe->query("max_qi") * 80 / 100;
+	if (s["tier"] > 0)
+	{
+		q = q * (20 + s["tier"] * 6 - over * 3) / 20;
+		foe->add_temp("apply/damage", s["tier"] * 4 - over * 2);
+		foe->add_temp("apply/unarmed_damage", s["tier"] * 4 - over * 2);
+		foe->set("combat_exp", 25000 + s["tier"] * 5000 - over * 2500);
+	}
+	foe->set("max_qi", q); foe->set("eff_qi", q); foe->set("qi", q);
+	foe->move(environment(me));
+	message_vision(HIR "一个劫道的从巷子里蹿出来，横刀喝道：「镖银留下！」" NOR "\n", me);
+	tell_object(me, HIC "目标已出现：劫道的（kill jiedao）" NOR "\n");
+	foe->kill_ob(me);
+	if (objectp(npc)) foe->kill_ob(npc);
+	s["escort"]["next_at"] = time() + 16;
+	me->set_temp("yuanzheng", s);
+	call_out("look_again", 1, me);
+}
+
+void escort_won(object me)
+{
+	mapping s;
+	object npc;
+	int coin;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["escort"])) return;
+	coin = 20 + s["stage"] * 3;
+	s["coin"] = (s["coin"] || 0) + coin;
+	s["points"] += 1;
+	npc = find_escort(me);
+	if (objectp(npc))
+	{
+		message_vision(HIG "$N" HIG "把夹板往肩上一扛，长出一口气：「到了！这点心意您收着。」" NOR "\n", npc);
+		call_out("purge", 1, ({ npc }));
+	}
+	purge_escort_foe(me);
+	map_delete(s, "escort");
+	tell_object(me, HIY "【远征】这一趟镖送到了！多拿 " + coin + " 枚铜钱和 1 点属性点。" NOR "\n");
+	fork_done(me, s);
+}
+
+void escort_failed(object me)
+{
+	mapping s;
+
+	if (! objectp(me) || ! (s = state(me)) || ! mapp(s["escort"])) return;
+	purge_escort_foe(me);
+	map_delete(s, "escort");
+	tell_object(me, HIR "【远征】镖师倒下了，这趟镖算白跑：钱没拿到，路还得接着走。" NOR "\n");
 	fork_done(me, s);
 }
