@@ -33,6 +33,7 @@ var tmenuob = $('div#tmenu');
 var Wp1 = '#$dm@%!*33'; //客户端key验证码
 var user_key = 'Abcd1234Zwy';
 var chat_height = 0;
+var lastLayoutSig = '';
 
 //防止查看源码(禁止鼠标左右功能键)
 window.onload_disabled = function() {
@@ -1299,17 +1300,38 @@ function writeServerData(buf) {
 		{
 			writeToScreen(line);
 		}
+	// 聊天气泡、弹窗、方向格都会改变下面那几块的高度，每来一行就排一次（内部有 120ms 合并）
+	scheduleRelayout();
 };
 
 function adjustLayout() {
 	if(!loginok) return;
 
 	refreshViewport();
-	leftob.height(scrh-(96+chat_height)-longob.height()-hpsob.height()-tbarob.height());
-	rightob.height(scrh-(96+chat_height)-longob.height()-hpsob.height()-tbarob.height());
-	outob.height(scrh-(196+chat_height)-longob.height()-hpsob.height()-tbarob.height());
-	objob.height(scrh-(96+chat_height)-longob.height()-actsob.height()-hpsob.height()-tbarob.height());
-	mycmdsob.css("bottom",42+hpsob.height());
+	// 按实测高度排：底部固定浮着气血条和菜单两块，右边一列是「日志区 + 方向格」。
+	// 以前用常数 196 估算，聊天区一变形（或方向格换行变高）日志区就多出几十像素，
+	// 把方向格挤出屏幕（手机上就是「最下面那排被切掉」）。现在全部按实测算。
+	var safeB = 0;
+	try { safeB = parseFloat($(document.body).css('padding-bottom')) || 0; } catch (e) { }
+	var avail = scrh - safeB;
+	var below = (hpsob.outerHeight() || 36) + (menuob.outerHeight() || 38) + 6;
+	var colTop = rightob.position().top + (parseFloat(rightob.css('margin-top')) || 0);
+	var colH = Math.max(200, avail - colTop - below);
+	var exitsH = exitsob.outerHeight(true) || 96;
+
+	// 每来一行都会排一次，数值没变就别动样式（写样式才会触发重排）
+	var gridTop = exitsob.offset().top;
+	var panelBottom = Math.round(Math.max(120, scrh - safeB - gridTop) + 6);
+	var sig = colH + '/' + panelBottom;
+	if (sig === lastLayoutSig) return;
+	lastLayoutSig = sig;
+
+	rightob.height(colH);
+	outob.css('height', ''); // 高度交给 flex 算：日志区吃掉方向格之外的空间
+	leftob.height(colH);
+	objob.css('height', '');
+	// 快捷指令面板（常用/技能/系统）浮在方向格上面，不能压住九宫格。
+	mycmdsob.css("bottom", panelBottom);
 };
 
 // 横竖屏切换、地址栏伸缩时窗口尺寸会变；手机上软键盘弹出时 visualViewport 也会变。
@@ -1320,6 +1342,8 @@ function scheduleRelayout() {
 	relayoutTimer = setTimeout(function () {
 		relayoutTimer = null;
 		adjustLayout();
+		// 方向格/聊天区刚换过行时第一次量到的是旧高度，隔一帧再排一次让位置落定
+		setTimeout(adjustLayout, 220);
 	}, 120);
 }
 

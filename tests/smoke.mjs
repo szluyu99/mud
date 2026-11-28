@@ -119,6 +119,33 @@ async function zjmudExtras(page, ctx) {
   check('zjmud: queued "west;south" arrives at 中央广场', await waitRoom(page, '中央广场', 10000), await room(page));
   await send(page, 'north;east');
   check('zjmud: queued "north;east" back to 宝昌客栈', await waitRoom(page, '宝昌客栈', 10000), await room(page));
+  // 手机竖屏下九宫格要完整落在视口里；底部「常用/技能/系统」面板弹出时不能压住它
+  await send(page, 'west;south'); await waitRoom(page, '中央广场', 10000);
+  const grid = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('#exits td')];
+    const bottom = Math.max(...cells.map((td) => (td.querySelector('button') || td).getBoundingClientRect().bottom));
+    return { n: cells.length, bottom: Math.round(bottom), ih: window.innerHeight };
+  });
+  check('zjmud: 3x3 方向格九格都在视口内', grid.n === 9 && grid.bottom <= grid.ih, grid);
+  // 快捷面板要等服务端把按钮发回来才长出来，点完等一下再量
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('#menu input')].find((x) => x.offsetParent && /常用|技能|系统/.test(x.value || ''));
+    if (btn) btn.click();
+  });
+  await page.waitForTimeout(1200);
+  const cover = await page.evaluate(() => {
+    const ex = document.getElementById('exits').getBoundingClientRect();
+    const mc = document.getElementById('mycmds'); const r = mc.getBoundingClientRect();
+    const overlap = Math.max(0, Math.min(r.bottom, ex.bottom) - Math.max(r.top, ex.top));
+    const td = [...document.querySelectorAll('#exits td')].find((x) => (x.innerText || '').trim());
+    const b = td.querySelector('button') || td; const br = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(br.x + br.width / 2, br.y + br.height / 2);
+    const vis = getComputedStyle(mc).display !== 'none' && r.height > 0;
+    if (window.close_mycmds) close_mycmds();
+    return { vis, overlap: Math.round(overlap), hitOk: !!hit && (b === hit || b.contains(hit) || hit.contains(b)) };
+  });
+  check('zjmud: 快捷面板浮在方向格上面，不压住九宫格', cover.vis && cover.overlap === 0 && cover.hitOk, cover);
+  await send(page, 'north;east');
   // wiki map mode: unvisited rooms are drawn and clickable
   await page.evaluate(() => document.querySelectorAll('#exits td')[4].click()); await page.waitForTimeout(400);
   await page.evaluate(() => document.querySelector('[data-mm=wiki]')?.click()); await page.waitForTimeout(400);

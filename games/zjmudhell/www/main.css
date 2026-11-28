@@ -51,12 +51,16 @@ div#tmenu {
 div#mleft {
 	float: left;
 	width:18%;
+	display:flex;
+	flex-direction:column;
 	border-right:1px solid rgba(150,150,150,0.5);
 }
 
 div#mright {
 	float:left;
 	width:81%;
+	display:flex;
+	flex-direction:column;
 }
 
 div#hps {
@@ -78,6 +82,8 @@ div#obj {
 	float:left;
 	width:98%;
 	overflow:auto;
+	flex:1 1 auto;
+	min-height:0;
 }
 
 div#hudong {
@@ -108,11 +114,13 @@ div#acts {
 	float:left;
 	width:98%;
 	overflow:auto;
+	flex:0 0 auto;
 }
 
 div#exits {
 	float:left;
 	width:100%;
+	flex:0 0 auto;
 	/* 这里是血条上方那组走向按钮（上/下/左/右…），固定 3 行。
 	   原来写死 93px，而三行按钮加上边框实际要 94px，就因为这 1px
 	   右侧一直挂着一根细滚动条。改成按内容自适应，并预留 1px 边框余量。 */
@@ -125,6 +133,8 @@ div#exits {
 div#out {
 	float:left;
 	width:100%;
+	flex:1 1 auto;
+	min-height:0;
 	margin-top: 3px;
 	margin-left: 3px;
 	overflow:auto;
@@ -136,7 +146,7 @@ div#mycmds {
 	position:absolute;
 	height:93px;
 	left:18%;
-	bottom: calc(43px + env(safe-area-inset-bottom, 0px));
+	bottom: calc(175px + env(safe-area-inset-bottom, 0px));
 	width:81%;
 	margin-left:3px;
 	margin-top:2px;
